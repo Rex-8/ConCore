@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ConCore</title>
+    <script>
+        async function sendMessage() {
+            const model = document.getElementById("model").value;
+            const apiKey = document.getElementById("apiKey").value;
+            const message = document.getElementById("message").value;
+
+            const res = await fetch("/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ model, apiKey, message })
+            });
+
+            const data = await res.json();
+            document.getElementById("response").innerText = data.reply;
+        }
+    </script>
+</head>
+<body>
+    <h2>ConCore (Minimal Chat)</h2>
+
+    <label for="model">Choose Model:</label>
+    <select id="model">
+        <option value="openai">OpenAI</option>
+        <option value="claude">Claude</option>
+        <option value="gemini">Gemini</option>
+    </select><br><br>
+
+    <label for="apiKey">API Key:</label>
+    <input type="password" id="apiKey" style="width:300px;"><br><br>
+
+    <textarea id="message" rows="4" cols="50" placeholder="Type your request..."></textarea><br><br>
+    <button onclick="sendMessage()">Send</button>
+
+    <h3>Response:</h3>
+    <pre id="response"></pre>
+</body>
+</html>

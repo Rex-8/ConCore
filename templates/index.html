@@ -1,41 +1,274 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ConCore</title>
-    <script>
-        async function sendMessage() {
-            const model = document.getElementById("model").value;
-            const apiKey = document.getElementById("apiKey").value;
-            const message = document.getElementById("message").value;
-
-            const res = await fetch("/chat", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ model, apiKey, message })
-            });
-
-            const data = await res.json();
-            document.getElementById("response").innerText = data.reply;
-        }
-    </script>
+    <link rel="stylesheet" href="static/styles.css">
 </head>
 <body>
-    <h2>ConCore (Minimal Chat)</h2>
+    <div class="header">
+        <div class="logo">ConCore</div>
+    </div>
 
-    <label for="model">Choose Model:</label>
-    <select id="model">
-        <option value="openai">OpenAI</option>
-        <option value="claude">Claude</option>
-        <option value="gemini">Gemini</option>
-    </select><br><br>
+    <div class="chat-container">
+        <div class="messages-area" id="messagesArea">
+            <div class="welcome-message">
+                <h2>Welcome to ConCore</h2>
+                <p>Choose your AI model and start chatting</p>
+            </div>
+        </div>
 
-    <label for="apiKey">API Key:</label>
-    <input type="password" id="apiKey" style="width:300px;"><br><br>
+        <div class="loading-indicator" id="loadingIndicator">
+            Thinking...
+        </div>
 
-    <textarea id="message" rows="4" cols="50" placeholder="Type your request..."></textarea><br><br>
-    <button onclick="sendMessage()">Send</button>
+        <div class="input-area">
+            <div class="input-controls">
+                <div class="file-attachment" title="Attach file">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.64 16.2a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                    </svg>
+                </div>
+                <textarea 
+                    id="messageInput" 
+                    class="message-input" 
+                    placeholder="Message ConCore..." 
+                    rows="1"
+                ></textarea>
+            </div>
+            <div class="input-bottom">
+                <div class="model-selector">
+                    <div class="api-key-container">
+                        <div class="api-status" id="apiStatus"></div>
+                        <span class="api-key-label" id="apiKeyLabel">OpenAI Key:</span>
+                        <input 
+                            type="password" 
+                            class="api-key-input" 
+                            id="apiKeyInput"
+                            placeholder="sk-..."
+                        >
+                    </div>
+                    <div class="model-dropdown" id="modelDropdown">
+                        <button class="model-button" id="modelButton">
+                            <span id="selectedModel">GPT-4</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="m6 9 6 6 6-6"/>
+                            </svg>
+                        </button>
+                        <div class="model-options" id="modelOptions">
+                            <div class="model-option selected" data-value="openai" data-label="OpenAI Key:">GPT-4</div>
+                            <div class="model-option" data-value="claude" data-label="Claude Key:">Claude</div>
+                            <div class="model-option" data-value="gemini" data-label="Gemini Key:">Gemini</div>
+                        </div>
+                    </div>
+                </div>
+                <button class="send-button" id="sendButton">Send</button>
+            </div>
+        </div>
+    </div>
 
-    <h3>Response:</h3>
-    <pre id="response"></pre>
+    <script>
+        let selectedModel = 'openai';
+        let isLoading = false;
+        
+        // Store API keys for each model
+        const apiKeys = {
+            openai: '',
+            claude: '',
+            gemini: ''
+        };
+
+        // DOM elements
+        const modelDropdown = document.getElementById('modelDropdown');
+        const modelButton = document.getElementById('modelButton');
+        const modelOptions = document.getElementById('modelOptions');
+        const selectedModelSpan = document.getElementById('selectedModel');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const messagesArea = document.getElementById('messagesArea');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const apiKeyInput = document.getElementById('apiKeyInput');
+        const apiKeyLabel = document.getElementById('apiKeyLabel');
+        const apiStatus = document.getElementById('apiStatus');
+
+        // Update API key status indicator
+        function updateApiStatus(hasKey) {
+            if (hasKey) {
+                apiStatus.classList.add('valid');
+                apiStatus.classList.remove('invalid');
+            } else {
+                apiStatus.classList.remove('valid');
+                apiStatus.classList.add('invalid');
+            }
+        }
+
+        // Update API key input when model changes
+        function updateApiKeyInput() {
+            apiKeyInput.value = apiKeys[selectedModel];
+            updateApiStatus(apiKeys[selectedModel].length > 0);
+        }
+
+        // Save current API key when input changes
+        apiKeyInput.addEventListener('input', function() {
+            apiKeys[selectedModel] = this.value.trim();
+            updateApiStatus(this.value.trim().length > 0);
+        });
+
+        // Model dropdown functionality
+        modelButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            modelDropdown.classList.toggle('open');
+            modelOptions.classList.toggle('show');
+        });
+
+        document.addEventListener('click', () => {
+            modelDropdown.classList.remove('open');
+            modelOptions.classList.remove('show');
+        });
+
+        // Model selection
+        modelOptions.addEventListener('click', (e) => {
+            if (e.target.classList.contains('model-option')) {
+                // Remove previous selection
+                document.querySelector('.model-option.selected').classList.remove('selected');
+                
+                // Add selection to clicked option
+                e.target.classList.add('selected');
+                
+                // Update selected model
+                selectedModel = e.target.dataset.value;
+                selectedModelSpan.textContent = e.target.textContent;
+                
+                // Update API key label
+                apiKeyLabel.textContent = e.target.dataset.label;
+                
+                // Update API key input for new model
+                updateApiKeyInput();
+                
+                // Close dropdown
+                modelDropdown.classList.remove('open');
+                modelOptions.classList.remove('show');
+            }
+        });
+
+        // Auto-resize textarea
+        messageInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 200) + 'px';
+        });
+
+        // Send message on Enter (but allow Shift+Enter for new line)
+        messageInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // Send button click
+        sendButton.addEventListener('click', sendMessage);
+
+        function addMessage(content, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'message-user' : 'message-assistant'}`;
+            
+            const messageContent = document.createElement('div');
+            messageContent.className = 'message-content';
+            messageContent.textContent = content;
+            
+            messageDiv.appendChild(messageContent);
+            
+            // Remove welcome message if it exists
+            const welcomeMessage = document.querySelector('.welcome-message');
+            if (welcomeMessage) {
+                welcomeMessage.remove();
+            }
+            
+            messagesArea.appendChild(messageDiv);
+            messagesArea.scrollTop = messagesArea.scrollHeight;
+        }
+
+        function addErrorMessage(content) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message';
+            errorDiv.textContent = content;
+            
+            const welcomeMessage = document.querySelector('.welcome-message');
+            if (welcomeMessage) {
+                welcomeMessage.remove();
+            }
+            
+            messagesArea.appendChild(errorDiv);
+            messagesArea.scrollTop = messagesArea.scrollHeight;
+        }
+
+        function setLoading(loading) {
+            isLoading = loading;
+            sendButton.disabled = loading;
+            loadingIndicator.classList.toggle('show', loading);
+            
+            if (loading) {
+                sendButton.textContent = 'Sending...';
+            } else {
+                sendButton.textContent = 'Send';
+            }
+        }
+
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            const currentApiKey = apiKeys[selectedModel];
+
+            if (!message || isLoading) return;
+
+            if (!currentApiKey) {
+                addErrorMessage(`Please enter your ${selectedModelSpan.textContent} API key first.`);
+                apiKeyInput.focus();
+                return;
+            }
+
+            // Add user message
+            addMessage(message, true);
+            
+            // Clear input
+            messageInput.value = '';
+            messageInput.style.height = 'auto';
+            
+            // Set loading state
+            setLoading(true);
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: selectedModel,
+                        apiKey: currentApiKey,
+                        message: message
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.reply) {
+                    addMessage(data.reply);
+                } else {
+                    addErrorMessage('No response received from the API.');
+                }
+            } catch (error) {
+                addErrorMessage(`Error: ${error.message}`);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // Initialize
+        window.addEventListener('load', () => {
+            updateApiKeyInput();
+            messageInput.focus();
+        });
+    </script>
 </body>
 </html>

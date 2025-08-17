@@ -1,5 +1,18 @@
 import pandas as pd
+from .utils import dataframe_to_json_dict
 
 def parse_csv(filepath: str):
+    """
+    Parse CSV file and return standardized format with:
+    - features: column names
+    - population: number of rows
+    - preview: sample data
+    """
     df = pd.read_csv(filepath)
-    return {"columns": df.columns.tolist(), "preview": df.head().to_dict()}
+    
+    return {
+        "features": df.columns.tolist(),  # Column names/features
+        "population": len(df),
+        "preview": dataframe_to_json_dict(df.head()),
+        "file_type": "csv"
+    }

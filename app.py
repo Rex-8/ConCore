@@ -10,15 +10,21 @@ import google.generativeai as genai
 # File parsing logic
 from data_parse.main_parser import parse_file
 
+# Context Manager
+from context.manager import ContextManager
+
 # Configuration
 UPLOAD_FOLDER = "uploads"
 ALLOWED_EXTENSIONS = {'json', 'csv', 'xlsx', 'xls', 'db', 'sqlite'}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Initialize app
+# Initialize app and context manager
 app = Flask(__name__)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
+
+# Initialize context manager
+cm = ContextManager()
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -54,13 +60,23 @@ def upload_file():
         # Save file
         file.save(filepath)
 
-        # Parse file
+        # Parse file - now returns standardized format
         result = parse_file(filepath)
         
         # Add file info to result
         result["filename"] = filename
         result["filepath"] = filepath
         result["size"] = os.path.getsize(filepath)
+
+        # Store in context manager as file-content
+        file_context = {
+            "filename": filename,
+            "features": result.get("features", []),
+            "population": result.get("population", 0),
+            "file_type": os.path.splitext(filename)[1].lower(),
+            "tables": result.get("tables", [])  # For SQLite files
+        }
+        cm.upload("file-content", file_context)
 
         return jsonify(result)
 
@@ -78,13 +94,38 @@ def chat_with_model():
         if not model or not api_key or not user_input:
             return jsonify({"reply": "Missing required parameters."}), 400
 
+        # Get current context and append to user message
+        context_data = cm.get_all()
+        enhanced_message = user_input
+        
+        if context_data:
+            context_str = "Available file context:\n"
+            for content in context_data:
+                if content["type"] == "file-content":
+                    data_info = content["data"]
+                    context_str += f"- File: {data_info['filename']} ({data_info['population']} rows)\n"
+                    
+                    # Handle different feature structures
+                    features = data_info['features']
+                    if isinstance(features, dict):  # SQLite case
+                        context_str += f"  Tables and Features:\n"
+                        for table, cols in features.items():
+                            context_str += f"    {table}: {', '.join(cols)}\n"
+                    else:  # CSV, Excel, JSON case
+                        context_str += f"  Features: {', '.join(features)}\n"
+                    
+                    if data_info.get('tables'):
+                        context_str += f"  Table Names: {', '.join(data_info['tables'])}\n"
+            
+            enhanced_message = f"{context_str}\nUser question: {user_input}"
+
         # Enhanced error handling for different models
         if model == "openai":
             try:
                 openai.api_key = api_key
                 response = openai.ChatCompletion.create(
                     model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": user_input}],
+                    messages=[{"role": "user", "content": enhanced_message}],
                     max_tokens=1000,
                     temperature=0.7
                 )
@@ -103,7 +144,7 @@ def chat_with_model():
                     model="claude-3-5-sonnet-20241022",
                     max_tokens=1000,
                     temperature=0.7,
-                    messages=[{"role": "user", "content": user_input}]
+                    messages=[{"role": "user", "content": enhanced_message}]
                 )
                 reply = response.content[0].text
             except anthropic.AuthenticationError:
@@ -118,7 +159,7 @@ def chat_with_model():
                 genai.configure(api_key=api_key)
                 model_client = genai.GenerativeModel("gemini-1.5-flash")
                 response = model_client.generate_content(
-                    user_input,
+                    enhanced_message,
                     generation_config=genai.types.GenerationConfig(
                         max_output_tokens=1000,
                         temperature=0.7,
@@ -141,6 +182,23 @@ def chat_with_model():
     except Exception as e:
         return jsonify({"reply": f"Server Error: {str(e)}"}), 500
 
+@app.route("/context", methods=["GET"])
+def get_context():
+    """Get all stored context data"""
+    try:
+        return jsonify(cm.get_all())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/context/clear", methods=["POST"])
+def clear_context():
+    """Clear all stored context data"""
+    try:
+        cm.clear()
+        return jsonify({"message": "Context cleared successfully"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/files", methods=["GET"])
 def list_uploaded_files():
     """List all uploaded files"""
@@ -160,7 +218,7 @@ def list_uploaded_files():
 
 @app.route("/files/<filename>", methods=["DELETE"])
 def delete_file(filename):
-    """Delete an uploaded file"""
+    """Delete an uploaded file and remove from context"""
     try:
         if not allowed_file(filename):
             return jsonify({"error": "Invalid file type"}), 400
@@ -168,6 +226,15 @@ def delete_file(filename):
         filepath = os.path.join(UPLOAD_FOLDER, secure_filename(filename))
         if os.path.exists(filepath):
             os.remove(filepath)
+            
+            # Remove from context manager
+            current_context = cm.get_all()
+            for i, content in enumerate(current_context):
+                if (content["type"] == "file-content" and 
+                    content["data"]["filename"] == filename):
+                    current_context.pop(i)
+                    break
+            
             return jsonify({"message": f"File {filename} deleted successfully"})
         else:
             return jsonify({"error": "File not found"}), 404

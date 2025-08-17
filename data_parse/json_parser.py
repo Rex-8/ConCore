@@ -1,5 +1,11 @@
-import pandas as pd
+import json
 
 def parse_json(filepath: str):
-    df = pd.read_json(filepath)
-    return {"columns": df.columns.tolist(), "preview": df.head().to_dict()}
+    """
+    Just load and return raw JSON.
+    Can be dict, list, or primitives depending on file content.
+    """
+    with open(filepath, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    return {"raw_json": data}

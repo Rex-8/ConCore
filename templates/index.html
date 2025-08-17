@@ -261,17 +261,34 @@
                 let previewContent = '';
                 const data = fileData.parsedData;
                 
-                if (data.columns) {
-                    previewContent = `Columns: ${data.columns.join(', ')}\n\nFirst few rows:\n${JSON.stringify(data.preview, null, 2)}`;
-                } else if (data.tables) {
-                    previewContent = `Tables: ${data.tables.join(', ')}\n\nPreview:\n${JSON.stringify(data.preview, null, 2)}`;
+                // Handle different data structures based on new format
+                if (data.features) {
+                    if (typeof data.features === 'object' && !Array.isArray(data.features)) {
+                        // SQLite case - features is an object {table1: [cols], table2: [cols]}
+                        previewContent = `Tables and Features:\n`;
+                        for (const [table, cols] of Object.entries(data.features)) {
+                            previewContent += `• ${table}: ${cols.join(', ')}\n`;
+                        }
+                        if (data.population) {
+                            previewContent += `\nTotal Population: ${data.population} rows\n`;
+                        }
+                        previewContent += `\nData Preview:\n${JSON.stringify(data.preview, null, 2)}`;
+                    } else {
+                        // CSV/Excel/JSON case - features is an array
+                        previewContent = `Features: ${data.features.join(', ')}\n`;
+                        if (data.population) {
+                            previewContent += `Population: ${data.population} rows\n`;
+                        }
+                        previewContent += `\nData Preview:\n${JSON.stringify(data.preview, null, 2)}`;
+                    }
                 } else {
+                    // Fallback for any other structure
                     previewContent = JSON.stringify(data, null, 2);
                 }
                 
                 dataPreview.innerHTML = `
                     <div class="file-data-header">Data Preview</div>
-                    <div class="file-data-content">${previewContent.substring(0, 500)}${previewContent.length > 500 ? '...' : ''}</div>
+                    <div class="file-data-content">${previewContent.substring(0, 800)}${previewContent.length > 800 ? '...' : ''}</div>
                 `;
                 
                 previewDiv.appendChild(dataPreview);
@@ -440,11 +457,24 @@
                 const fileContext = uploadedFiles.map(f => {
                     let context = `File: ${f.name}\n`;
                     if (f.parsedData) {
-                        if (f.parsedData.columns) {
-                            context += `Columns: ${f.parsedData.columns.join(', ')}\n`;
+                        // Handle new features structure
+                        if (f.parsedData.features) {
+                            if (typeof f.parsedData.features === 'object' && !Array.isArray(f.parsedData.features)) {
+                                // SQLite case
+                                context += `Tables and Features:\n`;
+                                for (const [table, cols] of Object.entries(f.parsedData.features)) {
+                                    context += `  ${table}: ${cols.join(', ')}\n`;
+                                }
+                            } else {
+                                // CSV/Excel/JSON case
+                                context += `Features: ${f.parsedData.features.join(', ')}\n`;
+                            }
                         }
                         if (f.parsedData.tables) {
                             context += `Tables: ${f.parsedData.tables.join(', ')}\n`;
+                        }
+                        if (f.parsedData.population) {
+                            context += `Population: ${f.parsedData.population} rows\n`;
                         }
                     }
                     return context;

@@ -5,6 +5,127 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ConCore</title>
     <link rel="stylesheet" href="static/styles.css">
+    <!-- Markdown rendering library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.2/marked.min.js"></script>
+    <!-- Syntax highlighting for code blocks -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <style>
+        /* Additional styles for markdown content */
+        .message-content h1, .message-content h2, .message-content h3 {
+            margin: 16px 0 8px 0;
+            font-weight: 600;
+        }
+        
+        .message-content h1 { font-size: 1.5em; }
+        .message-content h2 { font-size: 1.3em; }
+        .message-content h3 { font-size: 1.1em; }
+        
+        .message-content p {
+            margin: 8px 0;
+            line-height: 1.6;
+        }
+        
+        .message-content ul, .message-content ol {
+            margin: 8px 0;
+            padding-left: 20px;
+        }
+        
+        .message-content li {
+            margin: 4px 0;
+        }
+        
+        .message-content code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.9em;
+        }
+        
+        .message-content pre {
+            background: #f8f8f8;
+            border: 1px solid #e5e5e5;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 12px 0;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.9em;
+        }
+        
+        .message-content pre code {
+            background: none;
+            padding: 0;
+            border-radius: 0;
+        }
+        
+        .message-content blockquote {
+            border-left: 4px solid #c17a54;
+            margin: 12px 0;
+            padding: 8px 16px;
+            background: #fafafa;
+            font-style: italic;
+        }
+        
+        .message-content table {
+            border-collapse: collapse;
+            margin: 12px 0;
+            width: 100%;
+            font-size: 0.9em;
+        }
+        
+        .message-content th, .message-content td {
+            border: 1px solid #e5e5e5;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        
+        .message-content th {
+            background: #f8f8f8;
+            font-weight: 600;
+        }
+        
+        .message-content a {
+            color: #c17a54;
+            text-decoration: none;
+        }
+        
+        .message-content a:hover {
+            text-decoration: underline;
+        }
+        
+        .message-content strong {
+            font-weight: 600;
+        }
+        
+        .message-content em {
+            font-style: italic;
+        }
+        
+        .message-content hr {
+            border: none;
+            border-top: 1px solid #e5e5e5;
+            margin: 20px 0;
+        }
+        
+        /* User messages should keep simple styling */
+        .message-user .message-content h1,
+        .message-user .message-content h2,
+        .message-user .message-content h3,
+        .message-user .message-content p {
+            margin: 4px 0;
+        }
+        
+        .message-user .message-content code {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .message-user .message-content pre {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+    </style>
 </head>
 <body>
     <div class="header">
@@ -15,7 +136,7 @@
         <div class="messages-area" id="messagesArea">
             <div class="welcome-message">
                 <h2>Welcome to ConCore</h2>
-                <p>Choose your AI model and start chatting</p>
+                <p>Choose your AI model and start chatting. **Markdown** *formatting* is supported!</p>
             </div>
         </div>
 
@@ -40,7 +161,7 @@
                 <textarea 
                     id="messageInput" 
                     class="message-input" 
-                    placeholder="Message ConCore..." 
+                    placeholder="Message ConCore... (Markdown supported)" 
                     rows="1"
                 ></textarea>
             </div>
@@ -76,6 +197,20 @@
     </div>
 
     <script>
+        // Configure marked for better rendering
+        marked.setOptions({
+            highlight: function(code, lang) {
+                if (lang && hljs.getLanguage(lang)) {
+                    try {
+                        return hljs.highlight(code, { language: lang }).value;
+                    } catch (__) {}
+                }
+                return hljs.highlightAuto(code).value;
+            },
+            breaks: true,
+            gfm: true
+        });
+
         let selectedModel = 'openai';
         let isLoading = false;
         let uploadedFiles = [];
@@ -102,7 +237,7 @@
         const fileInput = document.getElementById('fileInput');
         const filePreviewContainer = document.getElementById('filePreviewContainer');
 
-        // File handling
+        // File handling functions (unchanged from original)
         fileInput.addEventListener('change', handleFileUpload);
 
         function formatFileSize(bytes) {
@@ -163,7 +298,6 @@
             const files = Array.from(event.target.files);
             
             for (const file of files) {
-                // Check file type
                 const validTypes = ['.json', '.csv', '.xlsx', '.xls', '.db', '.sqlite'];
                 const fileExt = '.' + file.name.split('.').pop().toLowerCase();
                 
@@ -184,7 +318,6 @@
                 await uploadAndParseFile(fileData);
             }
             
-            // Clear the input to allow re-uploading the same file
             event.target.value = '';
         }
 
@@ -193,7 +326,6 @@
             formData.append('file', fileData.file);
 
             try {
-                // Show file preview immediately
                 showFilePreview(fileData);
                 
                 const response = await fetch('/upload', {
@@ -207,14 +339,9 @@
                     addErrorMessage(`Error parsing ${fileData.name}: ${result.error}`);
                     removeFilePreview(fileData.id);
                 } else {
-                    // Store parsed data
                     fileData.parsedData = result;
-                    
-                    // Update file preview with data preview
                     updateFilePreview(fileData);
-                    
-                    // Add system message about file upload
-                    addMessage(`📁 File "${fileData.name}" uploaded and parsed successfully. You can now ask questions about this data.`, false, true);
+                    addMessage(`📁 **File "${fileData.name}" uploaded successfully!**\n\nYou can now ask questions about this data. The AI has access to the file structure and can use tools to analyze the actual data when needed.`, false, true);
                 }
             } catch (error) {
                 addErrorMessage(`Error uploading ${fileData.name}: ${error.message}`);
@@ -254,17 +381,14 @@
                     sizeDiv.textContent = `${formatFileSize(fileData.size)} • Ready`;
                 }
                 
-                // Add data preview
                 const dataPreview = document.createElement('div');
                 dataPreview.className = 'file-data-preview';
                 
                 let previewContent = '';
                 const data = fileData.parsedData;
                 
-                // Handle different data structures based on new format
                 if (data.features) {
                     if (typeof data.features === 'object' && !Array.isArray(data.features)) {
-                        // SQLite case - features is an object {table1: [cols], table2: [cols]}
                         previewContent = `Tables and Features:\n`;
                         for (const [table, cols] of Object.entries(data.features)) {
                             previewContent += `• ${table}: ${cols.join(', ')}\n`;
@@ -274,7 +398,6 @@
                         }
                         previewContent += `\nData Preview:\n${JSON.stringify(data.preview, null, 2)}`;
                     } else {
-                        // CSV/Excel/JSON case - features is an array
                         previewContent = `Features: ${data.features.join(', ')}\n`;
                         if (data.population) {
                             previewContent += `Population: ${data.population} rows\n`;
@@ -282,7 +405,6 @@
                         previewContent += `\nData Preview:\n${JSON.stringify(data.preview, null, 2)}`;
                     }
                 } else {
-                    // Fallback for any other structure
                     previewContent = JSON.stringify(data, null, 2);
                 }
                 
@@ -303,14 +425,10 @@
         }
 
         window.removeFile = function(fileId) {
-            // Remove from uploaded files array
             uploadedFiles = uploadedFiles.filter(f => f.id != fileId);
-            
-            // Remove from DOM
             removeFilePreview(fileId);
         };
 
-        // Update API key status indicator
         function updateApiStatus(hasKey) {
             if (hasKey) {
                 apiStatus.classList.add('valid');
@@ -321,19 +439,16 @@
             }
         }
 
-        // Update API key input when model changes
         function updateApiKeyInput() {
             apiKeyInput.value = apiKeys[selectedModel];
             updateApiStatus(apiKeys[selectedModel].length > 0);
         }
 
-        // Save current API key when input changes
         apiKeyInput.addEventListener('input', function() {
             apiKeys[selectedModel] = this.value.trim();
             updateApiStatus(this.value.trim().length > 0);
         });
 
-        // Model dropdown functionality
         modelButton.addEventListener('click', (e) => {
             e.stopPropagation();
             modelDropdown.classList.toggle('open');
@@ -345,38 +460,27 @@
             modelOptions.classList.remove('show');
         });
 
-        // Model selection
         modelOptions.addEventListener('click', (e) => {
             if (e.target.classList.contains('model-option')) {
-                // Remove previous selection
                 document.querySelector('.model-option.selected').classList.remove('selected');
-                
-                // Add selection to clicked option
                 e.target.classList.add('selected');
                 
-                // Update selected model
                 selectedModel = e.target.dataset.value;
                 selectedModelSpan.textContent = e.target.textContent;
-                
-                // Update API key label
                 apiKeyLabel.textContent = e.target.dataset.label;
                 
-                // Update API key input for new model
                 updateApiKeyInput();
                 
-                // Close dropdown
                 modelDropdown.classList.remove('open');
                 modelOptions.classList.remove('show');
             }
         });
 
-        // Auto-resize textarea
         messageInput.addEventListener('input', function() {
             this.style.height = 'auto';
             this.style.height = Math.min(this.scrollHeight, 200) + 'px';
         });
 
-        // Send message on Enter (but allow Shift+Enter for new line)
         messageInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -384,9 +488,9 @@
             }
         });
 
-        // Send button click
         sendButton.addEventListener('click', sendMessage);
 
+        // Enhanced message rendering with markdown support
         function addMessage(content, isUser = false, isSystem = false) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${isUser ? 'message-user' : 'message-assistant'}`;
@@ -400,10 +504,29 @@
                 messageContent.style.color = '#0066cc';
             }
             
-            messageContent.textContent = content;
+            // Render markdown for assistant and system messages
+            if (!isUser || isSystem) {
+                try {
+                    messageContent.innerHTML = marked.parse(content);
+                    // Highlight code blocks
+                    messageContent.querySelectorAll('pre code').forEach((block) => {
+                        hljs.highlightElement(block);
+                    });
+                } catch (error) {
+                    console.warn('Markdown parsing failed:', error);
+                    messageContent.textContent = content;
+                }
+            } else {
+                // User messages: simple markdown parsing
+                try {
+                    messageContent.innerHTML = marked.parse(content);
+                } catch (error) {
+                    messageContent.textContent = content;
+                }
+            }
+            
             messageDiv.appendChild(messageContent);
             
-            // Remove welcome message if it exists
             const welcomeMessage = document.querySelector('.welcome-message');
             if (welcomeMessage) {
                 welcomeMessage.remove();
@@ -416,7 +539,13 @@
         function addErrorMessage(content) {
             const errorDiv = document.createElement('div');
             errorDiv.className = 'error-message';
-            errorDiv.textContent = content;
+            
+            // Parse markdown for error messages too
+            try {
+                errorDiv.innerHTML = marked.parse(content);
+            } catch (error) {
+                errorDiv.textContent = content;
+            }
             
             const welcomeMessage = document.querySelector('.welcome-message');
             if (welcomeMessage) {
@@ -446,27 +575,23 @@
             if (!message || isLoading) return;
 
             if (!currentApiKey) {
-                addErrorMessage(`Please enter your ${selectedModelSpan.textContent} API key first.`);
+                addErrorMessage(`Please enter your **${selectedModelSpan.textContent}** API key first.`);
                 apiKeyInput.focus();
                 return;
             }
 
-            // Prepare message with file context if files are uploaded
             let enhancedMessage = message;
             if (uploadedFiles.length > 0) {
                 const fileContext = uploadedFiles.map(f => {
                     let context = `File: ${f.name}\n`;
                     if (f.parsedData) {
-                        // Handle new features structure
                         if (f.parsedData.features) {
                             if (typeof f.parsedData.features === 'object' && !Array.isArray(f.parsedData.features)) {
-                                // SQLite case
                                 context += `Tables and Features:\n`;
                                 for (const [table, cols] of Object.entries(f.parsedData.features)) {
                                     context += `  ${table}: ${cols.join(', ')}\n`;
                                 }
                             } else {
-                                // CSV/Excel/JSON case
                                 context += `Features: ${f.parsedData.features.join(', ')}\n`;
                             }
                         }
@@ -483,14 +608,11 @@
                 enhancedMessage = `Context: I have uploaded the following files:\n${fileContext}\n\nUser Question: ${message}`;
             }
 
-            // Add user message
             addMessage(message, true);
             
-            // Clear input
             messageInput.value = '';
             messageInput.style.height = 'auto';
             
-            // Set loading state
             setLoading(true);
 
             try {
@@ -514,7 +636,7 @@
                     addErrorMessage('No response received from the API.');
                 }
             } catch (error) {
-                addErrorMessage(`Error: ${error.message}`);
+                addErrorMessage(`**Error:** ${error.message}`);
             } finally {
                 setLoading(false);
             }

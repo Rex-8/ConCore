@@ -3,38 +3,374 @@ from werkzeug.utils import secure_filename
 import os
 import json
 import time
+import pandas as pd
+import numpy as np
+import sqlite3
+from datetime import datetime
+import traceback
+import base64
+from io import BytesIO
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import seaborn as sns
+import warnings
+warnings.filterwarnings('ignore')
 
 # AI APIs
-import openai
-import anthropic
-import google.generativeai as genai
+try:
+    import openai
+except ImportError:
+    openai = None
 
-# File parsing logic
-from data_parse.main_parser import parse_file
+try:
+    import anthropic
+except ImportError:
+    anthropic = None
 
-# Enhanced Context Manager
-from context.manager import ContextManager
-
-# Data Access Tools
-from data_access_tools import DataAccessTools, LLMToolIntegration
+try:
+    import google.generativeai as genai
+except ImportError:
+    genai = None
 
 # Configuration
 UPLOAD_FOLDER = "uploads"
 ALLOWED_EXTENSIONS = {'json', 'csv', 'xlsx', 'xls', 'db', 'sqlite'}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Initialize app and components
 app = Flask(__name__)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
 
-# Initialize managers
-cm = ContextManager()
-data_tools = DataAccessTools(UPLOAD_FOLDER)
+# In-memory storage for this session
+session_data = {
+    "files": {},
+    "conversation_history": [],
+    "session_id": f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+}
+
+class DataProcessor:
+    """Handle file parsing and data operations"""
+    
+    @staticmethod
+    def parse_file(filepath):
+        """Parse uploaded file and return metadata"""
+        try:
+            filename = os.path.basename(filepath)
+            ext = os.path.splitext(filename)[1].lower()
+            
+            if ext == ".csv":
+                df = pd.read_csv(filepath)
+                return {
+                    "filename": filename,
+                    "file_type": "csv",
+                    "population": len(df),
+                    "features": df.columns.tolist(),
+                    "sample_data": df.head(3).to_dict('records'),
+                    "data_types": df.dtypes.astype(str).to_dict()
+                }
+                
+            elif ext in [".xls", ".xlsx"]:
+                df = pd.read_excel(filepath)
+                return {
+                    "filename": filename,
+                    "file_type": "excel", 
+                    "population": len(df),
+                    "features": df.columns.tolist(),
+                    "sample_data": df.head(3).to_dict('records'),
+                    "data_types": df.dtypes.astype(str).to_dict()
+                }
+                
+            elif ext == ".json":
+                with open(filepath, 'r') as f:
+                    data = json.load(f)
+                
+                if isinstance(data, list) and len(data) > 0:
+                    df = pd.DataFrame(data)
+                    return {
+                        "filename": filename,
+                        "file_type": "json",
+                        "population": len(df),
+                        "features": df.columns.tolist(),
+                        "sample_data": df.head(3).to_dict('records'),
+                        "data_types": df.dtypes.astype(str).to_dict()
+                    }
+                else:
+                    return {
+                        "filename": filename,
+                        "file_type": "json",
+                        "population": 1,
+                        "features": list(data.keys()) if isinstance(data, dict) else ["value"],
+                        "sample_data": [data] if isinstance(data, dict) else [{"value": data}],
+                        "data_types": {}
+                    }
+                    
+            elif ext in [".db", ".sqlite"]:
+                conn = sqlite3.connect(filepath)
+                cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                tables = [row[0] for row in cursor.fetchall()]
+                
+                table_info = {}
+                total_rows = 0
+                
+                for table in tables:
+                    cursor = conn.execute(f"SELECT COUNT(*) FROM {table}")
+                    row_count = cursor.fetchone()[0]
+                    total_rows += row_count
+                    
+                    cursor = conn.execute(f"PRAGMA table_info({table})")
+                    columns = [row[1] for row in cursor.fetchall()]
+                    table_info[table] = columns
+                
+                conn.close()
+                
+                return {
+                    "filename": filename,
+                    "file_type": "sqlite",
+                    "population": total_rows,
+                    "features": table_info,
+                    "tables": tables,
+                    "sample_data": []
+                }
+                
+            else:
+                raise ValueError(f"Unsupported file type: {ext}")
+                
+        except Exception as e:
+            raise Exception(f"Failed to parse file: {str(e)}")
+
+class ScriptExecutor:
+    """Execute Python scripts safely"""
+    
+    def __init__(self):
+        self.upload_folder = UPLOAD_FOLDER
+        
+    def execute_script(self, script, filename=None, description="", output_type="both"):
+        """Execute Python script with optional data loading"""
+        try:
+            # Prepare execution environment
+            exec_globals = {
+                'pd': pd, 'pandas': pd,
+                'np': np, 'numpy': np,
+                'plt': plt, 'matplotlib': matplotlib,
+                'sns': sns, 'seaborn': sns,
+                'json': json,
+                'datetime': datetime
+            }
+            
+            exec_locals = {}
+            
+            # Load data if filename provided
+            if filename and filename in session_data["files"]:
+                filepath = os.path.join(self.upload_folder, filename)
+                if os.path.exists(filepath):
+                    df = self._load_dataframe(filepath)
+                    exec_locals['df'] = df
+                    exec_locals['data'] = df
+            
+            # Capture stdout
+            import sys
+            from io import StringIO
+            old_stdout = sys.stdout
+            sys.stdout = captured_output = StringIO()
+            
+            # Execute script
+            plt.figure(figsize=(10, 6))
+            exec(script, exec_globals, exec_locals)
+            
+            # Get output
+            output_text = captured_output.getvalue()
+            sys.stdout = old_stdout
+            
+            # Check for plot
+            plot_data = None
+            if plt.get_fignums():
+                buf = BytesIO()
+                plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+                buf.seek(0)
+                plot_data = base64.b64encode(buf.getvalue()).decode('utf-8')
+                plt.close('all')
+            
+            return {
+                "success": True,
+                "description": description,
+                "script": script,
+                "filename": filename,
+                "output_type": output_type,
+                "execution_time": datetime.now().isoformat(),
+                "printed_output": output_text,
+                "has_plot": plot_data is not None,
+                "plot_base64": plot_data,
+                "variables_created": [k for k in exec_locals.keys() if not k.startswith('_')]
+            }
+            
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "traceback": traceback.format_exc(),
+                "script": script,
+                "filename": filename,
+                "description": description
+            }
+        finally:
+            plt.close('all')
+    
+    def _load_dataframe(self, filepath):
+        """Load file into pandas DataFrame"""
+        ext = os.path.splitext(filepath)[1].lower()
+        
+        if ext == ".csv":
+            return pd.read_csv(filepath)
+        elif ext in [".xls", ".xlsx"]:
+            return pd.read_excel(filepath)
+        elif ext == ".json":
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                return pd.DataFrame(data)
+            elif isinstance(data, dict):
+                return pd.DataFrame([data])
+            else:
+                return pd.DataFrame([{"value": data}])
+        elif ext in [".db", ".sqlite"]:
+            conn = sqlite3.connect(filepath)
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = cursor.fetchall()
+            if tables:
+                table_name = tables[0][0]
+                df = pd.read_sql_query(f"SELECT * FROM {table_name} LIMIT 1000", conn)
+            else:
+                df = pd.DataFrame()
+            conn.close()
+            return df
+        else:
+            raise ValueError(f"Unsupported file type: {ext}")
+
+class DataTools:
+    """Data analysis tools"""
+    
+    def __init__(self):
+        self.upload_folder = UPLOAD_FOLDER
+    
+    def get_sample(self, filename, rows=10, offset=0):
+        """Get sample rows from dataset"""
+        try:
+            filepath = os.path.join(self.upload_folder, filename)
+            df = self._load_dataframe(filepath)
+            
+            sample_df = df.iloc[offset:offset+rows]
+            
+            return {
+                "success": True,
+                "data": sample_df.to_dict('records'),
+                "rows_returned": len(sample_df),
+                "total_rows": len(df),
+                "columns": df.columns.tolist()
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def get_statistics(self, filename, columns=None):
+        """Get descriptive statistics"""
+        try:
+            filepath = os.path.join(self.upload_folder, filename)
+            df = self._load_dataframe(filepath)
+            
+            if columns:
+                df = df[columns]
+            
+            numeric_df = df.select_dtypes(include=[np.number])
+            
+            if numeric_df.empty:
+                return {"success": False, "error": "No numeric columns found"}
+            
+            stats = numeric_df.describe()
+            
+            return {
+                "success": True,
+                "statistics": stats.to_dict(),
+                "columns_analyzed": stats.columns.tolist(),
+                "total_rows": len(df)
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def search_data(self, filename, column, value, limit=20):
+        """Search for specific values"""
+        try:
+            filepath = os.path.join(self.upload_folder, filename)
+            df = self._load_dataframe(filepath)
+            
+            if column not in df.columns:
+                return {"success": False, "error": f"Column '{column}' not found"}
+            
+            mask = df[column].astype(str).str.contains(str(value), case=False, na=False)
+            matching_df = df[mask].head(limit)
+            
+            return {
+                "success": True,
+                "data": matching_df.to_dict('records'),
+                "rows_returned": len(matching_df),
+                "total_matches": mask.sum(),
+                "search_column": column,
+                "search_value": value
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def query_sqlite(self, filename, query, limit=50):
+        """Execute SQL query"""
+        try:
+            filepath = os.path.join(self.upload_folder, filename)
+            
+            if not query.strip().upper().startswith("SELECT"):
+                return {"success": False, "error": "Only SELECT queries are allowed"}
+            
+            conn = sqlite3.connect(filepath)
+            
+            if "LIMIT" not in query.upper():
+                query = f"{query} LIMIT {limit}"
+            
+            df = pd.read_sql_query(query, conn)
+            conn.close()
+            
+            return {
+                "success": True,
+                "data": df.to_dict('records'),
+                "rows_returned": len(df),
+                "columns": df.columns.tolist(),
+                "query": query
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def _load_dataframe(self, filepath):
+        """Load file into DataFrame"""
+        ext = os.path.splitext(filepath)[1].lower()
+        
+        if ext == ".csv":
+            return pd.read_csv(filepath)
+        elif ext in [".xls", ".xlsx"]:
+            return pd.read_excel(filepath)
+        elif ext == ".json":
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                return pd.DataFrame(data)
+            else:
+                return pd.DataFrame([data])
+        else:
+            raise ValueError(f"Unsupported file type: {ext}")
+
+# Initialize components
+data_processor = DataProcessor()
+script_executor = ScriptExecutor()
+data_tools = DataTools()
 
 def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # Routes
 @app.route("/")
@@ -47,7 +383,7 @@ def static_files(filename):
 
 @app.route("/upload", methods=["POST"])
 def upload_file():
-    """Upload and parse file - stores only metadata in context"""
+    """Upload and parse file"""
     try:
         if "file" not in request.files:
             return jsonify({"error": "No file uploaded"}), 400
@@ -67,153 +403,65 @@ def upload_file():
         # Save file
         file.save(filepath)
 
-        # Parse file - returns standardized metadata format
-        result = parse_file(filepath)
+        # Parse file
+        result = data_processor.parse_file(filepath)
         
-        # Add file info to result
-        result["filename"] = filename
-        result["filepath"] = filepath
-        result["size"] = os.path.getsize(filepath)
-
-        # Store ONLY metadata in context manager
-        file_context = {
-            "filename": filename,
-            "features": result.get("features", []),
-            "population": result.get("population", 0),
-            "file_type": os.path.splitext(filename)[1].lower(),
-            "tables": result.get("tables", [])  # For SQLite files
+        # Store in session data
+        session_data["files"][filename] = {
+            "filepath": filepath,
+            "metadata": result,
+            "uploaded_at": datetime.now().isoformat()
         }
-        cm.upload("file-content", file_context)
 
         return jsonify(result)
 
     except Exception as e:
-        return jsonify({"error": f"Failed to process file: {str(e)}"}), 500
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/chat", methods=["POST"])
 def chat_with_model():
-    """Enhanced chat endpoint with conversation history and tool calling"""
-    start_time = time.time()
-    
+    """Chat endpoint with AI models"""
     try:
         data = request.json
         model = data.get("model")
         api_key = data.get("apiKey")
         user_input = data.get("message")
-        include_history = data.get("include_history", True)  # New parameter
-        history_turns = data.get("history_turns", 5)  # How many turns to include
 
         if not model or not api_key or not user_input:
             return jsonify({"reply": "Missing required parameters."}), 400
 
-        # Get current context (metadata only)
-        context_data = cm.get_all()
-        enhanced_message = user_input
-        
-        # Build file context
-        files_context = []
-        if context_data:
-            context_str = "Available file context (metadata only - use tools to access actual data):\n"
-            for content in context_data:
-                if content["type"] == "file-content":
-                    data_info = content["data"]
-                    files_context.append(data_info["filename"])
-                    context_str += f"- File: {data_info['filename']} ({data_info['population']} rows)\n"
-                    
-                    # Handle different feature structures
-                    features = data_info['features']
-                    if isinstance(features, dict):  # SQLite case
-                        context_str += f"  Tables and Features:\n"
-                        for table, cols in features.items():
-                            context_str += f"    {table}: {', '.join(cols)}\n"
-                    else:  # CSV, Excel, JSON case
-                        context_str += f"  Features: {', '.join(features)}\n"
-                    
-                    if data_info.get('tables'):
-                        context_str += f"  Table Names: {', '.join(data_info['tables'])}\n"
+        # Build context from uploaded files
+        context_str = ""
+        if session_data["files"]:
+            context_str = "Available datasets:\n"
+            for filename, file_info in session_data["files"].items():
+                metadata = file_info["metadata"]
+                context_str += f"- {filename}: {metadata.get('population', 0)} rows"
+                
+                features = metadata.get('features', [])
+                if isinstance(features, dict):  # SQLite
+                    context_str += f", Tables: {list(features.keys())}\n"
+                else:  # CSV, Excel, JSON
+                    context_str += f", {len(features)} columns\n"
             
-            context_str += "\nTo access actual data, use the available tools:\n"
-            context_str += "- get_data_sample: Get sample rows\n"
-            context_str += "- get_column_data: Get specific columns\n" 
-            context_str += "- get_statistics: Get descriptive statistics\n"
-            context_str += "- search_data: Search for specific values\n"
-            context_str += "- query_sqlite: Run SQL queries on database files\n\n"
-            
-            enhanced_message = context_str + enhanced_message
+            context_str += "\nYou can analyze this data, create visualizations, or generate Python/SQL code.\n\n"
 
-        # Add conversation history if requested
-        if include_history:
-            conversation_context = cm.get_conversation_context_for_llm(
-                turns_to_include=history_turns,
-                include_tool_calls=True
-            )
-            if conversation_context:
-                enhanced_message = conversation_context + "\n" + enhanced_message
+        enhanced_message = context_str + user_input
 
-        # Get tool definitions
-        tools_definition = data_tools.get_tools_definition()
-        tool_calls_made = []
-
-        # Route to appropriate model with tool support
-        if model == "openai":
+        # Route to appropriate model
+        if model == "openai" and openai:
             try:
                 client = openai.OpenAI(api_key=api_key)
-                
-                # Format tools for OpenAI
-                tools = LLMToolIntegration.format_tools_for_openai(tools_definition)
                 
                 response = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[{"role": "user", "content": enhanced_message}],
-                    tools=tools,
-                    tool_choice="auto",
-                    max_tokens=1000,
+                    max_tokens=1500,
                     temperature=0.7
                 )
                 
-                message = response.choices[0].message
+                reply = response.choices[0].message.content
                 
-                # Handle tool calls
-                if message.tool_calls:
-                    tool_call_messages = []
-                    
-                    for tool_call in message.tool_calls:
-                        tool_name = tool_call.function.name
-                        tool_args = json.loads(tool_call.function.arguments)
-                        
-                        # Execute tool and track calls
-                        result = data_tools.execute_tool(tool_name, tool_args)
-                        tool_calls_made.append({
-                            "tool": tool_name,
-                            "arguments": tool_args,
-                            "result": result
-                        })
-                        
-                        # Add tool call result message
-                        tool_call_messages.append({
-                            "tool_call_id": tool_call.id,
-                            "role": "tool",
-                            "name": tool_name,
-                            "content": json.dumps(result)
-                        })
-                    
-                    # Get follow-up response with tool results
-                    messages = [
-                        {"role": "user", "content": enhanced_message},
-                        message,  # Assistant message with tool calls
-                    ] + tool_call_messages
-                    
-                    final_response = client.chat.completions.create(
-                        model="gpt-4o-mini", 
-                        messages=messages,
-                        max_tokens=1000,
-                        temperature=0.7
-                    )
-                    
-                    reply = final_response.choices[0].message.content
-                else:
-                    reply = message.content
-                    
             except Exception as e:
                 error_str = str(e).lower()
                 if "incorrect_api_key" in error_str or "invalid" in error_str:
@@ -223,71 +471,19 @@ def chat_with_model():
                 else:
                     reply = f"OpenAI Error: {str(e)}"
 
-        elif model == "claude":
+        elif model == "claude" and anthropic:
             try:
                 client = anthropic.Anthropic(api_key=api_key)
                 
-                # Format tools for Claude
-                tools = LLMToolIntegration.format_tools_for_claude(tools_definition)
-                
                 response = client.messages.create(
                     model="claude-3-5-sonnet-20241022",
-                    max_tokens=1000,
+                    max_tokens=1500,
                     temperature=0.7,
-                    tools=tools,
                     messages=[{"role": "user", "content": enhanced_message}]
                 )
                 
-                # Handle tool calls
-                if response.stop_reason == "tool_use":
-                    tool_call_messages = []
-                    assistant_content = []
-                    
-                    # Collect assistant content and tool calls
-                    for content_block in response.content:
-                        if content_block.type == "text":
-                            assistant_content.append(content_block.text)
-                        elif content_block.type == "tool_use":
-                            tool_name = content_block.name
-                            tool_args = content_block.input
-                            
-                            # Execute tool and track calls
-                            result = data_tools.execute_tool(tool_name, tool_args)
-                            tool_calls_made.append({
-                                "tool": tool_name,
-                                "arguments": tool_args,
-                                "result": result
-                            })
-                            
-                            # Add tool result message
-                            tool_call_messages.append({
-                                "role": "user",
-                                "content": [
-                                    {
-                                        "type": "tool_result",
-                                        "tool_use_id": content_block.id,
-                                        "content": json.dumps(result)
-                                    }
-                                ]
-                            })
-                    
-                    # Get follow-up response with tool results
-                    messages = [
-                        {"role": "user", "content": enhanced_message},
-                        {"role": "assistant", "content": response.content}
-                    ] + tool_call_messages
-                    
-                    final_response = client.messages.create(
-                        model="claude-3-5-sonnet-20241022",
-                        max_tokens=1000,
-                        temperature=0.7,
-                        messages=messages
-                    )
-                    
-                    reply = final_response.content[0].text
-                else:
-                    reply = response.content[0].text
-                    
+                reply = response.content[0].text
+                
             except Exception as e:
                 error_str = str(e).lower()
                 if "authentication" in error_str or "invalid" in error_str:
@@ -297,24 +493,15 @@ def chat_with_model():
                 else:
                     reply = f"Claude Error: {str(e)}"
 
-        elif model == "gemini":
+        elif model == "gemini" and genai:
             try:
                 genai.configure(api_key=api_key)
-                
                 model_client = genai.GenerativeModel("gemini-1.5-flash")
-                
-                # Add tool instructions to the prompt
-                tool_instructions = "\n\nIf you need to access actual data from the files, please ask me to use one of these tools:\n"
-                for tool in tools_definition:
-                    func = tool["function"]
-                    tool_instructions += f"- {func['name']}: {func['description']}\n"
-                
-                enhanced_message += tool_instructions
                 
                 response = model_client.generate_content(
                     enhanced_message,
                     generation_config=genai.types.GenerationConfig(
-                        max_output_tokens=1000,
+                        max_output_tokens=1500,
                         temperature=0.7,
                     )
                 )
@@ -330,281 +517,150 @@ def chat_with_model():
                     reply = f"Gemini Error: {str(e)}"
 
         else:
-            reply = "Invalid model selected. Please choose OpenAI, Claude, or Gemini."
+            reply = f"Model '{model}' is not available or API library not installed."
 
-        # Calculate response time
-        response_time = time.time() - start_time
-        
-        # Store conversation turn in context manager
-        conversation_id = cm.add_conversation_turn(
-            user_message=user_input,
-            assistant_response=reply,
-            model_used=model,
-            files_context=files_context,
-            tool_calls=tool_calls_made,
-            metadata={
-                "response_time_seconds": response_time,
-                "message_length": len(enhanced_message),
-                "tools_available": len(tools_definition),
-                "include_history": include_history,
-                "history_turns_included": history_turns if include_history else 0
-            }
-        )
-
-        return jsonify({
-            "reply": reply,
-            "conversation_id": conversation_id,
-            "response_time": f"{response_time:.2f}s",
-            "tools_used": len(tool_calls_made)
+        # Store conversation
+        session_data["conversation_history"].append({
+            "timestamp": datetime.now().isoformat(),
+            "user_message": user_input,
+            "assistant_response": reply,
+            "model_used": model
         })
+
+        return jsonify({"reply": reply})
 
     except Exception as e:
         return jsonify({"reply": f"Server Error: {str(e)}"}), 500
 
-# New conversation management endpoints
-@app.route("/conversation/history", methods=["GET"])
-def get_conversation_history():
-    """Get conversation history with optional filtering"""
-    try:
-        limit = request.args.get("limit", type=int)
-        session_id = request.args.get("session_id")
-        include_context = request.args.get("include_context", "true").lower() == "true"
-        
-        history = cm.get_conversation_history(
-            limit=limit,
-            session_id=session_id,
-            include_context=include_context
-        )
-        
-        return jsonify({
-            "history": history,
-            "total_conversations": len(history),
-            "current_session": cm.session_id
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/conversation/search", methods=["POST"])
-def search_conversations():
-    """Search through conversation history"""
+@app.route("/execute_script", methods=["POST"])
+def execute_script():
+    """Execute Python script"""
     try:
         data = request.json
-        query = data.get("query", "")
-        search_in = data.get("search_in", "both")  # "user", "assistant", "both"
-        case_sensitive = data.get("case_sensitive", False)
+        script = data.get("script", "")
+        filename = data.get("filename")
+        description = data.get("description", "Script execution")
+        output_type = data.get("output_type", "both")
         
-        if not query:
-            return jsonify({"error": "Query parameter is required"}), 400
+        if not script:
+            return jsonify({"success": False, "error": "No script provided"})
         
-        results = cm.search_conversations(
-            query=query,
-            search_in=search_in,
-            case_sensitive=case_sensitive
-        )
-        
-        return jsonify({
-            "results": results,
-            "total_matches": len(results),
-            "query": query,
-            "search_in": search_in
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/conversation/summary", methods=["GET"])
-def get_conversation_summary():
-    """Get conversation summary and statistics"""
-    try:
-        summary = cm.get_conversation_summary()
-        return jsonify(summary)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/conversation/export", methods=["GET"])
-def export_conversation():
-    """Export conversation history"""
-    try:
-        format_type = request.args.get("format", "json")  # "json" or "markdown"
-        
-        if format_type not in ["json", "markdown"]:
-            return jsonify({"error": "Format must be 'json' or 'markdown'"}), 400
-        
-        exported_data = cm.export_conversation_history(format=format_type)
-        
-        # Set appropriate content type and filename
-        if format_type == "json":
-            response = app.response_class(
-                response=exported_data,
-                status=200,
-                mimetype='application/json',
-                headers={
-                    'Content-Disposition': f'attachment; filename=conversation_history_{cm.session_id}.json'
-                }
-            )
-        else:  # markdown
-            response = app.response_class(
-                response=exported_data,
-                status=200,
-                mimetype='text/markdown',
-                headers={
-                    'Content-Disposition': f'attachment; filename=conversation_history_{cm.session_id}.md'
-                }
-            )
-        
-        return response
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/tools/execute", methods=["POST"])
-def execute_data_tool():
-    """Manual tool execution endpoint for testing or direct access"""
-    try:
-        data = request.json
-        tool_name = data.get("tool_name")
-        arguments = data.get("arguments", {})
-        
-        if not tool_name:
-            return jsonify({"error": "tool_name is required"}), 400
-            
-        result = data_tools.execute_tool(tool_name, arguments)
+        result = script_executor.execute_script(script, filename, description, output_type)
         return jsonify(result)
         
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"success": False, "error": str(e)})
 
-@app.route("/tools/list", methods=["GET"])
-def list_available_tools():
-    """Get list of available data access tools"""
+@app.route("/data_tools/<tool_name>", methods=["POST"])
+def data_tool(tool_name):
+    """Execute data analysis tools"""
     try:
-        tools_definition = data_tools.get_tools_definition()
-        simplified_tools = []
+        data = request.json
         
-        for tool in tools_definition:
-            func = tool["function"]
-            simplified_tools.append({
-                "name": func["name"],
-                "description": func["description"],
-                "parameters": list(func["parameters"]["properties"].keys())
-            })
+        if tool_name == "sample":
+            filename = data.get("filename")
+            rows = data.get("rows", 10)
+            offset = data.get("offset", 0)
+            return jsonify(data_tools.get_sample(filename, rows, offset))
             
-        return jsonify({"tools": simplified_tools})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/context", methods=["GET"])
-def get_context():
-    """Get all stored context data (metadata only) and conversation summary"""
-    try:
-        context_data = cm.get_all()
-        conversation_summary = cm.get_conversation_summary()
-        
-        return jsonify({
-            "file_context": context_data,
-            "conversation_summary": conversation_summary,
-            "session_id": cm.session_id
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/context/clear", methods=["POST"])
-def clear_context():
-    """Clear context data with options"""
-    try:
-        data = request.json or {}
-        clear_type = data.get("type", "all")  # "all", "files", "conversation"
-        
-        if clear_type == "all":
-            cm.clear()
-            message = "All context and conversation history cleared successfully"
-        elif clear_type == "files":
-            cm.clear_by_type("file-content")
-            message = "File context cleared successfully"
-        elif clear_type == "conversation":
-            cm.clear_conversation_only()
-            message = "Conversation history cleared successfully"
+        elif tool_name == "statistics":
+            filename = data.get("filename")
+            columns = data.get("columns")
+            return jsonify(data_tools.get_statistics(filename, columns))
+            
+        elif tool_name == "search":
+            filename = data.get("filename")
+            column = data.get("column")
+            value = data.get("value")
+            limit = data.get("limit", 20)
+            return jsonify(data_tools.search_data(filename, column, value, limit))
+            
+        elif tool_name == "query":
+            filename = data.get("filename")
+            query = data.get("query")
+            limit = data.get("limit", 50)
+            return jsonify(data_tools.query_sqlite(filename, query, limit))
+            
         else:
-            return jsonify({"error": "Invalid clear type. Use 'all', 'files', or 'conversation'"}), 400
-        
-        return jsonify({
-            "message": message,
-            "new_session_id": cm.session_id
-        })
+            return jsonify({"success": False, "error": f"Unknown tool: {tool_name}"})
+            
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"success": False, "error": str(e)})
 
 @app.route("/files", methods=["GET"])
-def list_uploaded_files():
-    """List all uploaded files"""
+def list_files():
+    """List uploaded files"""
     try:
-        files = []
-        for filename in os.listdir(UPLOAD_FOLDER):
-            filepath = os.path.join(UPLOAD_FOLDER, filename)
-            if os.path.isfile(filepath) and allowed_file(filename):
-                files.append({
-                    "filename": filename,
-                    "size": os.path.getsize(filepath),
-                    "uploaded": os.path.getctime(filepath)
-                })
-        return jsonify({"files": files})
+        files_info = []
+        for filename, file_data in session_data["files"].items():
+            metadata = file_data["metadata"]
+            files_info.append({
+                "filename": filename,
+                "file_type": metadata.get("file_type"),
+                "population": metadata.get("population", 0),
+                "features": len(metadata.get("features", [])) if isinstance(metadata.get("features"), list) else len(metadata.get("features", {})),
+                "uploaded_at": file_data["uploaded_at"]
+            })
+        
+        return jsonify({
+            "files": files_info,
+            "total_files": len(files_info),
+            "session_id": session_data["session_id"]
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route("/files/<filename>", methods=["DELETE"])
 def delete_file(filename):
-    """Delete an uploaded file and remove from context"""
+    """Delete uploaded file"""
     try:
-        if not allowed_file(filename):
-            return jsonify({"error": "Invalid file type"}), 400
-            
-        filepath = os.path.join(UPLOAD_FOLDER, secure_filename(filename))
-        if os.path.exists(filepath):
-            os.remove(filepath)
-            
-            # Remove from context manager
-            cm.remove_file(filename)
-            
+        if filename in session_data["files"]:
+            filepath = session_data["files"][filename]["filepath"]
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            del session_data["files"][filename]
             return jsonify({"message": f"File {filename} deleted successfully"})
         else:
             return jsonify({"error": "File not found"}), 404
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Session management endpoints
-@app.route("/session/info", methods=["GET"])
-def get_session_info():
-    """Get current session information"""
+@app.route("/session/clear", methods=["POST"])
+def clear_session():
+    """Clear session data"""
     try:
+        # Clear conversation history
+        session_data["conversation_history"].clear()
+        
+        # Optionally clear files
+        clear_files = request.json.get("clear_files", False) if request.json else False
+        if clear_files:
+            for filename, file_data in session_data["files"].items():
+                filepath = file_data["filepath"]
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+            session_data["files"].clear()
+        
+        # Generate new session ID
+        session_data["session_id"] = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
         return jsonify({
-            "session_id": cm.session_id,
-            "session_start": cm.session_start_time.isoformat(),
-            "conversation_count": len(cm.conversation_history),
-            "files_loaded": len(cm.get_files()),
-            "summary": cm.get_conversation_summary()
+            "message": "Session cleared successfully",
+            "session_id": session_data["session_id"],
+            "files_cleared": clear_files
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/session/new", methods=["POST"])
-def start_new_session():
-    """Start a new session (clears conversation but keeps files)"""
+@app.route("/session/info", methods=["GET"])
+def session_info():
+    """Get session information"""
     try:
-        data = request.json or {}
-        keep_files = data.get("keep_files", True)
-        
-        old_session_id = cm.session_id
-        
-        if keep_files:
-            cm.clear_conversation_only()
-            message = f"New session started. Files retained from previous session."
-        else:
-            cm.clear()
-            message = f"New session started. All data cleared."
-        
         return jsonify({
-            "message": message,
-            "old_session_id": old_session_id,
-            "new_session_id": cm.session_id,
-            "files_retained": keep_files
+            "session_id": session_data["session_id"],
+            "total_files": len(session_data["files"]),
+            "conversation_turns": len(session_data["conversation_history"]),
+            "files": list(session_data["files"].keys())
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -622,7 +678,6 @@ def not_found(e):
 def server_error(e):
     return jsonify({"error": "Internal server error"}), 500
 
-# Run server
 if __name__ == "__main__":
-    print(f"ConCore starting with session: {cm.session_id}")
+    print(f"ConCore starting with session: {session_data['session_id']}")
     app.run(debug=True, host='0.0.0.0', port=8000)

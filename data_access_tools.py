@@ -5,21 +5,26 @@ import json
 import os
 from datetime import datetime
 
+# Import the new script executor
+from script_executor import ScriptExecutor
+
 class DataAccessTools:
     """
-    Provides function tools that LLMs can call to access actual file data.
-    Data is only loaded when explicitly requested through these functions.
+    Enhanced data access tools with script execution capability.
+    Provides function tools that LLMs can call to access actual file data
+    and execute custom Python scripts for analysis.
     """
     
     def __init__(self, upload_folder: str = "uploads"):
         self.upload_folder = upload_folder
+        self.script_executor = ScriptExecutor(upload_folder)
         
     def get_tools_definition(self) -> List[Dict[str, Any]]:
         """
-        Returns the function definitions that can be passed to LLM APIs
-        for tool calling (OpenAI format, adaptable to Claude/Gemini)
+        Returns all function definitions including the new script executor
         """
-        return [
+        tools = [
+            # Existing tools
             {
                 "type": "function",
                 "function": {
@@ -153,6 +158,11 @@ class DataAccessTools:
                 }
             }
         ]
+        
+        # Add the script executor tool
+        tools.append(self.script_executor.get_tool_definition())
+        
+        return tools
     
     def _load_dataframe(self, filename: str) -> pd.DataFrame:
         """Load file into pandas DataFrame"""
@@ -194,7 +204,7 @@ class DataAccessTools:
     def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute a tool function and return results.
-        This is called by the chat endpoint when LLM requests tool usage.
+        Now includes script execution capability.
         """
         try:
             if tool_name == "get_data_sample":
@@ -207,11 +217,14 @@ class DataAccessTools:
                 return self.search_data(**arguments)
             elif tool_name == "query_sqlite":
                 return self.query_sqlite(**arguments)
+            elif tool_name == "execute_script":
+                return self.script_executor.execute_script(**arguments)
             else:
                 return {"error": f"Unknown tool: {tool_name}"}
         except Exception as e:
             return {"error": f"Tool execution failed: {str(e)}"}
     
+    # All existing methods remain unchanged
     def get_data_sample(self, filename: str, rows: int = 10, offset: int = 0) -> Dict[str, Any]:
         """Get sample rows from dataset"""
         rows = min(max(1, rows), 100)  # Clamp between 1-100
@@ -389,7 +402,7 @@ class DataAccessTools:
             return {"error": f"SQL query failed: {str(e)}"}
 
 
-# Integration helper for different LLM APIs
+# Integration helper for different LLM APIs remains unchanged
 class LLMToolIntegration:
     """Helper class to integrate tools with different LLM APIs"""
     

@@ -3,195 +3,197 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ConCore</title>
+    <title>ConCore - AI Data Analysis</title>
     <link rel="stylesheet" href="static/styles.css">
     <!-- Markdown rendering library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.2/marked.min.js"></script>
     <!-- Syntax highlighting for code blocks -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
-    <style>
-        /* Additional styles for markdown content */
-        .message-content h1, .message-content h2, .message-content h3 {
-            margin: 16px 0 8px 0;
-            font-weight: 600;
-        }
-        
-        .message-content h1 { font-size: 1.5em; }
-        .message-content h2 { font-size: 1.3em; }
-        .message-content h3 { font-size: 1.1em; }
-        
-        .message-content p {
-            margin: 8px 0;
-            line-height: 1.6;
-        }
-        
-        .message-content ul, .message-content ol {
-            margin: 8px 0;
-            padding-left: 20px;
-        }
-        
-        .message-content li {
-            margin: 4px 0;
-        }
-        
-        .message-content code {
-            background: #f5f5f5;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-            font-size: 0.9em;
-        }
-        
-        .message-content pre {
-            background: #f8f8f8;
-            border: 1px solid #e5e5e5;
-            border-radius: 8px;
-            padding: 12px;
-            margin: 12px 0;
-            overflow-x: auto;
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-            font-size: 0.9em;
-        }
-        
-        .message-content pre code {
-            background: none;
-            padding: 0;
-            border-radius: 0;
-        }
-        
-        .message-content blockquote {
-            border-left: 4px solid #c17a54;
-            margin: 12px 0;
-            padding: 8px 16px;
-            background: #fafafa;
-            font-style: italic;
-        }
-        
-        .message-content table {
-            border-collapse: collapse;
-            margin: 12px 0;
-            width: 100%;
-            font-size: 0.9em;
-        }
-        
-        .message-content th, .message-content td {
-            border: 1px solid #e5e5e5;
-            padding: 8px 12px;
-            text-align: left;
-        }
-        
-        .message-content th {
-            background: #f8f8f8;
-            font-weight: 600;
-        }
-        
-        .message-content a {
-            color: #c17a54;
-            text-decoration: none;
-        }
-        
-        .message-content a:hover {
-            text-decoration: underline;
-        }
-        
-        .message-content strong {
-            font-weight: 600;
-        }
-        
-        .message-content em {
-            font-style: italic;
-        }
-        
-        .message-content hr {
-            border: none;
-            border-top: 1px solid #e5e5e5;
-            margin: 20px 0;
-        }
-        
-        /* User messages should keep simple styling */
-        .message-user .message-content h1,
-        .message-user .message-content h2,
-        .message-user .message-content h3,
-        .message-user .message-content p {
-            margin: 4px 0;
-        }
-        
-        .message-user .message-content code {
-            background: rgba(255, 255, 255, 0.2);
-        }
-        
-        .message-user .message-content pre {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-    </style>
 </head>
 <body>
+    <!-- Header -->
     <div class="header">
         <div class="logo">ConCore</div>
+        <div class="header-controls">
+            <button class="tab-button active" data-tab="chat">💬 Chat</button>
+            <button class="tab-button" data-tab="script">🐍 Script Runner</button>
+        </div>
     </div>
 
-    <div class="chat-container">
-        <div class="messages-area" id="messagesArea">
-            <div class="welcome-message">
-                <h2>Welcome to ConCore</h2>
-                <p>Choose your AI model and start chatting. **Markdown** *formatting* is supported!</p>
-            </div>
-        </div>
-
-        <div class="loading-indicator" id="loadingIndicator">
-            Thinking...
-        </div>
-
-        <div class="input-area">
-            <div id="filePreviewContainer"></div>
-            <div class="input-controls">
-                <div class="file-attachment" title="Attach file">
-                    <input 
-                        type="file" 
-                        id="fileInput" 
-                        accept=".json,.csv,.xlsx,.xls,.db,.sqlite"
-                        multiple
-                    >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.64 16.2a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-                    </svg>
+    <!-- Chat Tab -->
+    <div class="tab-content active" id="chat-tab">
+        <div class="chat-container">
+            <div class="messages-area" id="messagesArea">
+                <div class="welcome-message">
+                    <h2>Welcome to ConCore</h2>
+                    <p>Upload data files and start chatting with AI. Advanced script execution available!</p>
                 </div>
-                <textarea 
-                    id="messageInput" 
-                    class="message-input" 
-                    placeholder="Message ConCore... (Markdown supported)" 
-                    rows="1"
-                ></textarea>
             </div>
-            <div class="input-bottom">
-                <div class="model-selector">
-                    <div class="api-key-container">
-                        <div class="api-status" id="apiStatus"></div>
-                        <span class="api-key-label" id="apiKeyLabel">OpenAI Key:</span>
+
+            <div class="loading-indicator" id="loadingIndicator">
+                Thinking...
+            </div>
+
+            <div class="input-area">
+                <div id="filePreviewContainer"></div>
+                <div class="input-controls">
+                    <div class="file-attachment" title="Attach file">
                         <input 
-                            type="password" 
-                            class="api-key-input" 
-                            id="apiKeyInput"
-                            placeholder="sk-..."
+                            type="file" 
+                            id="fileInput" 
+                            accept=".json,.csv,.xlsx,.xls,.db,.sqlite"
+                            multiple
                         >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.64 16.2a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                        </svg>
                     </div>
-                    <div class="model-dropdown" id="modelDropdown">
-                        <button class="model-button" id="modelButton">
-                            <span id="selectedModel">GPT-4</span>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="m6 9 6 6 6-6"/>
-                            </svg>
-                        </button>
-                        <div class="model-options" id="modelOptions">
-                            <div class="model-option selected" data-value="openai" data-label="OpenAI Key:">GPT-4</div>
-                            <div class="model-option" data-value="claude" data-label="Claude Key:">Claude</div>
-                            <div class="model-option" data-value="gemini" data-label="Gemini Key:">Gemini</div>
+                    <textarea 
+                        id="messageInput" 
+                        class="message-input" 
+                        placeholder="Message ConCore... (Markdown supported)" 
+                        rows="1"
+                    ></textarea>
+                </div>
+                <div class="input-bottom">
+                    <div class="model-selector">
+                        <div class="api-key-container">
+                            <div class="api-status" id="apiStatus"></div>
+                            <span class="api-key-label" id="apiKeyLabel">OpenAI Key:</span>
+                            <input 
+                                type="password" 
+                                class="api-key-input" 
+                                id="apiKeyInput"
+                                placeholder="sk-..."
+                            >
+                        </div>
+                        <div class="model-dropdown" id="modelDropdown">
+                            <button class="model-button" id="modelButton">
+                                <span id="selectedModel">GPT-4</span>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="m6 9 6 6 6-6"/>
+                                </svg>
+                            </button>
+                            <div class="model-options" id="modelOptions">
+                                <div class="model-option selected" data-value="openai" data-label="OpenAI Key:">GPT-4</div>
+                                <div class="model-option" data-value="claude" data-label="Claude Key:">Claude</div>
+                                <div class="model-option" data-value="gemini" data-label="Gemini Key:">Gemini</div>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="send-button" id="sendButton">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Runner Tab -->
+    <div class="tab-content" id="script-tab">
+        <div class="script-container">
+            <div class="script-grid">
+                <!-- Left Panel - Script Editor -->
+                <div class="script-panel">
+                    <div class="panel-header">
+                        <h3>🐍 Python Script Editor</h3>
+                        <div class="script-actions">
+                            <button id="generateScriptBtn" class="action-button secondary">✨ Generate</button>
+                            <button id="runScriptBtn" class="action-button primary">▶️ Run</button>
+                        </div>
+                    </div>
+                    
+                    <div class="script-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="scriptDescription">Description</label>
+                                <input 
+                                    type="text" 
+                                    id="scriptDescription" 
+                                    placeholder="e.g., Analyze sales trends and create visualization"
+                                    class="form-input"
+                                >
+                            </div>
+                            <div class="form-group">
+                                <label for="scriptFile">Data File</label>
+                                <select id="scriptFile" class="form-select">
+                                    <option value="">No file (script only)</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="scriptCode">Python Code</label>
+                            <textarea 
+                                id="scriptCode" 
+                                class="script-editor"
+                                placeholder="# Your Python code here
+# Use 'df' to access the loaded dataframe
+print('Dataset shape:', df.shape)
+print(df.head())"
+                            ></textarea>
                         </div>
                     </div>
                 </div>
-                <button class="send-button" id="sendButton">Send</button>
+
+                <!-- Right Panel - Output -->
+                <div class="output-panel">
+                    <div class="panel-header">
+                        <h3>📊 Output</h3>
+                        <div class="output-actions">
+                            <button id="clearOutputBtn" class="action-button secondary">🗑️ Clear</button>
+                            <button id="exportResultBtn" class="action-button secondary">💾 Export</button>
+                        </div>
+                    </div>
+                    
+                    <div class="output-content" id="scriptOutput">
+                        <div class="output-placeholder">
+                            <div class="placeholder-icon">📊</div>
+                            <p>Script output will appear here</p>
+                            <p class="placeholder-hint">Run a script to see results, plots, and analysis</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Generation Modal -->
+    <div class="modal" id="scriptGenerationModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>✨ Generate Python Script</h3>
+                <button class="modal-close" id="closeModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="scriptRequest">What analysis do you want to perform?</label>
+                    <textarea 
+                        id="scriptRequest" 
+                        placeholder="e.g., Create a correlation heatmap and analyze the relationship between price and sales volume"
+                        class="form-textarea"
+                        rows="4"
+                    ></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="modalDataFile">Data File</label>
+                        <select id="modalDataFile" class="form-select">
+                            <option value="">No file needed</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="scriptType">Output Type</label>
+                        <select id="scriptType" class="form-select">
+                            <option value="both">Analysis + Plot</option>
+                            <option value="analysis">Analysis Only</option>
+                            <option value="plot">Plot Only</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-button secondary" id="cancelGenerate">Cancel</button>
+                <button class="action-button primary" id="confirmGenerate">Generate Script</button>
             </div>
         </div>
     </div>
@@ -211,9 +213,11 @@
             gfm: true
         });
 
+        // Global state
         let selectedModel = 'openai';
         let isLoading = false;
         let uploadedFiles = [];
+        let currentTab = 'chat';
         
         // Store API keys for each model
         const apiKeys = {
@@ -223,6 +227,10 @@
         };
 
         // DOM elements
+        const tabButtons = document.querySelectorAll('.tab-button');
+        const tabContents = document.querySelectorAll('.tab-content');
+        
+        // Chat elements
         const modelDropdown = document.getElementById('modelDropdown');
         const modelButton = document.getElementById('modelButton');
         const modelOptions = document.getElementById('modelOptions');
@@ -237,8 +245,72 @@
         const fileInput = document.getElementById('fileInput');
         const filePreviewContainer = document.getElementById('filePreviewContainer');
 
-        // File handling functions (unchanged from original)
+        // Script elements
+        const scriptDescription = document.getElementById('scriptDescription');
+        const scriptFile = document.getElementById('scriptFile');
+        const scriptCode = document.getElementById('scriptCode');
+        const runScriptBtn = document.getElementById('runScriptBtn');
+        const generateScriptBtn = document.getElementById('generateScriptBtn');
+        const clearOutputBtn = document.getElementById('clearOutputBtn');
+        const exportResultBtn = document.getElementById('exportResultBtn');
+        const scriptOutput = document.getElementById('scriptOutput');
+        
+        // Modal elements
+        const scriptGenerationModal = document.getElementById('scriptGenerationModal');
+        const scriptRequest = document.getElementById('scriptRequest');
+        const modalDataFile = document.getElementById('modalDataFile');
+        const scriptType = document.getElementById('scriptType');
+        const closeModal = document.getElementById('closeModal');
+        const cancelGenerate = document.getElementById('cancelGenerate');
+        const confirmGenerate = document.getElementById('confirmGenerate');
+
+        // Tab switching
+        tabButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const tabName = button.dataset.tab;
+                switchTab(tabName);
+            });
+        });
+
+        function switchTab(tabName) {
+            currentTab = tabName;
+            
+            // Update tab buttons
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+            
+            // Update tab content
+            tabContents.forEach(content => content.classList.remove('active'));
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            
+            // Update file selects when switching to script tab
+            if (tabName === 'script') {
+                updateFileSelects();
+            }
+        }
+
+        // File handling (existing code remains the same)
         fileInput.addEventListener('change', handleFileUpload);
+
+        function updateFileSelects() {
+            const fileSelects = [scriptFile, modalDataFile];
+            fileSelects.forEach(select => {
+                // Clear existing options (except first one)
+                while (select.children.length > 1) {
+                    select.removeChild(select.lastChild);
+                }
+                
+                // Add uploaded files
+                uploadedFiles.forEach(file => {
+                    if (file.parsedData) {
+                        const option = document.createElement('option');
+                        option.value = file.name;
+                        option.textContent = `${file.name} (${file.parsedData.population || 0} rows)`;
+                        select.appendChild(option);
+                    }
+                });
+            });
+        }
 
         function formatFileSize(bytes) {
             if (bytes === 0) return '0 Bytes';
@@ -251,47 +323,9 @@
         function getFileIcon(filename) {
             const ext = filename.split('.').pop().toLowerCase();
             const icons = {
-                'csv': `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14,2 14,8 20,8"/>
-                    <line x1="16" y1="13" x2="8" y2="13"/>
-                    <line x1="16" y1="17" x2="8" y2="17"/>
-                    <polyline points="10,9 9,9 8,9"/>
-                </svg>`,
-                'json': `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14,2 14,8 20,8"/>
-                    <path d="M8 12h4l-2 4"/>
-                </svg>`,
-                'xlsx': `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14,2 14,8 20,8"/>
-                    <rect x="8" y="12" width="8" height="6"/>
-                    <line x1="8" y1="15" x2="16" y2="15"/>
-                    <line x1="12" y1="12" x2="12" y2="18"/>
-                </svg>`,
-                'xls': `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14,2 14,8 20,8"/>
-                    <rect x="8" y="12" width="8" height="6"/>
-                    <line x1="8" y1="15" x2="16" y2="15"/>
-                    <line x1="12" y1="12" x2="12" y2="18"/>
-                </svg>`,
-                'db': `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <ellipse cx="12" cy="5" rx="9" ry="3"/>
-                    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
-                    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-                </svg>`,
-                'sqlite': `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <ellipse cx="12" cy="5" rx="9" ry="3"/>
-                    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
-                    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-                </svg>`
+                'csv': '📊', 'json': '📋', 'xlsx': '📈', 'xls': '📈', 'db': '🗃️', 'sqlite': '🗃️'
             };
-            return icons[ext] || `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14,2 14,8 20,8"/>
-            </svg>`;
+            return icons[ext] || '📄';
         }
 
         async function handleFileUpload(event) {
@@ -319,6 +353,7 @@
             }
             
             event.target.value = '';
+            updateFileSelects();
         }
 
         async function uploadAndParseFile(fileData) {
@@ -341,7 +376,7 @@
                 } else {
                     fileData.parsedData = result;
                     updateFilePreview(fileData);
-                    addMessage(`📁 **File "${fileData.name}" uploaded successfully!**\n\nYou can now ask questions about this data. The AI has access to the file structure and can use tools to analyze the actual data when needed.`, false, true);
+                    addMessage(`${getFileIcon(fileData.name)} **File "${fileData.name}" uploaded successfully!**\n\nYou can now analyze this data using Chat or Script Runner.`, false, true);
                 }
             } catch (error) {
                 addErrorMessage(`Error uploading ${fileData.name}: ${error.message}`);
@@ -362,12 +397,7 @@
                         <div class="file-size">${formatFileSize(fileData.size)} • Processing...</div>
                     </div>
                 </div>
-                <div class="file-remove" onclick="removeFile('${fileData.id}')" title="Remove file">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="18" y1="6" x2="6" y2="18"/>
-                        <line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                </div>
+                <div class="file-remove" onclick="removeFile('${fileData.id}')" title="Remove file">✕</div>
             `;
             
             filePreviewContainer.appendChild(previewDiv);
@@ -380,40 +410,6 @@
                 if (sizeDiv) {
                     sizeDiv.textContent = `${formatFileSize(fileData.size)} • Ready`;
                 }
-                
-                const dataPreview = document.createElement('div');
-                dataPreview.className = 'file-data-preview';
-                
-                let previewContent = '';
-                const data = fileData.parsedData;
-                
-                if (data.features) {
-                    if (typeof data.features === 'object' && !Array.isArray(data.features)) {
-                        previewContent = `Tables and Features:\n`;
-                        for (const [table, cols] of Object.entries(data.features)) {
-                            previewContent += `• ${table}: ${cols.join(', ')}\n`;
-                        }
-                        if (data.population) {
-                            previewContent += `\nTotal Population: ${data.population} rows\n`;
-                        }
-                        previewContent += `\nData Preview:\n${JSON.stringify(data.preview, null, 2)}`;
-                    } else {
-                        previewContent = `Features: ${data.features.join(', ')}\n`;
-                        if (data.population) {
-                            previewContent += `Population: ${data.population} rows\n`;
-                        }
-                        previewContent += `\nData Preview:\n${JSON.stringify(data.preview, null, 2)}`;
-                    }
-                } else {
-                    previewContent = JSON.stringify(data, null, 2);
-                }
-                
-                dataPreview.innerHTML = `
-                    <div class="file-data-header">Data Preview</div>
-                    <div class="file-data-content">${previewContent.substring(0, 800)}${previewContent.length > 800 ? '...' : ''}</div>
-                `;
-                
-                previewDiv.appendChild(dataPreview);
             }
         }
 
@@ -427,8 +423,10 @@
         window.removeFile = function(fileId) {
             uploadedFiles = uploadedFiles.filter(f => f.id != fileId);
             removeFilePreview(fileId);
+            updateFileSelects();
         };
 
+        // Chat functionality (simplified from original)
         function updateApiStatus(hasKey) {
             if (hasKey) {
                 apiStatus.classList.add('valid');
@@ -449,6 +447,7 @@
             updateApiStatus(this.value.trim().length > 0);
         });
 
+        // Model dropdown functionality
         modelButton.addEventListener('click', (e) => {
             e.stopPropagation();
             modelDropdown.classList.toggle('open');
@@ -476,6 +475,7 @@
             }
         });
 
+        // Message input handling
         messageInput.addEventListener('input', function() {
             this.style.height = 'auto';
             this.style.height = Math.min(this.scrollHeight, 200) + 'px';
@@ -490,7 +490,6 @@
 
         sendButton.addEventListener('click', sendMessage);
 
-        // Enhanced message rendering with markdown support
         function addMessage(content, isUser = false, isSystem = false) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${isUser ? 'message-user' : 'message-assistant'}`;
@@ -499,25 +498,22 @@
             messageContent.className = 'message-content';
             
             if (isSystem) {
-                messageContent.style.background = '#f0f8ff';
-                messageContent.style.border = '1px solid #b3d9ff';
-                messageContent.style.color = '#0066cc';
+                messageContent.style.background = '#e8f5e8';
+                messageContent.style.border = '1px solid #90c695';
+                messageContent.style.color = '#2d5a31';
             }
             
-            // Render markdown for assistant and system messages
+            // Render markdown
             if (!isUser || isSystem) {
                 try {
                     messageContent.innerHTML = marked.parse(content);
-                    // Highlight code blocks
                     messageContent.querySelectorAll('pre code').forEach((block) => {
                         hljs.highlightElement(block);
                     });
                 } catch (error) {
-                    console.warn('Markdown parsing failed:', error);
                     messageContent.textContent = content;
                 }
             } else {
-                // User messages: simple markdown parsing
                 try {
                     messageContent.innerHTML = marked.parse(content);
                 } catch (error) {
@@ -539,13 +535,7 @@
         function addErrorMessage(content) {
             const errorDiv = document.createElement('div');
             errorDiv.className = 'error-message';
-            
-            // Parse markdown for error messages too
-            try {
-                errorDiv.innerHTML = marked.parse(content);
-            } catch (error) {
-                errorDiv.textContent = content;
-            }
+            errorDiv.innerHTML = marked.parse(content);
             
             const welcomeMessage = document.querySelector('.welcome-message');
             if (welcomeMessage) {
@@ -580,34 +570,6 @@
                 return;
             }
 
-            let enhancedMessage = message;
-            if (uploadedFiles.length > 0) {
-                const fileContext = uploadedFiles.map(f => {
-                    let context = `File: ${f.name}\n`;
-                    if (f.parsedData) {
-                        if (f.parsedData.features) {
-                            if (typeof f.parsedData.features === 'object' && !Array.isArray(f.parsedData.features)) {
-                                context += `Tables and Features:\n`;
-                                for (const [table, cols] of Object.entries(f.parsedData.features)) {
-                                    context += `  ${table}: ${cols.join(', ')}\n`;
-                                }
-                            } else {
-                                context += `Features: ${f.parsedData.features.join(', ')}\n`;
-                            }
-                        }
-                        if (f.parsedData.tables) {
-                            context += `Tables: ${f.parsedData.tables.join(', ')}\n`;
-                        }
-                        if (f.parsedData.population) {
-                            context += `Population: ${f.parsedData.population} rows\n`;
-                        }
-                    }
-                    return context;
-                }).join('\n');
-                
-                enhancedMessage = `Context: I have uploaded the following files:\n${fileContext}\n\nUser Question: ${message}`;
-            }
-
             addMessage(message, true);
             
             messageInput.value = '';
@@ -624,7 +586,7 @@
                     body: JSON.stringify({
                         model: selectedModel,
                         apiKey: currentApiKey,
-                        message: enhancedMessage
+                        message: message
                     })
                 });
 
@@ -642,10 +604,254 @@
             }
         }
 
+        // Script execution functionality
+        runScriptBtn.addEventListener('click', runScript);
+        generateScriptBtn.addEventListener('click', () => {
+            scriptGenerationModal.style.display = 'flex';
+        });
+        clearOutputBtn.addEventListener('click', clearOutput);
+        exportResultBtn.addEventListener('click', exportResult);
+
+        // Modal handling
+        closeModal.addEventListener('click', () => {
+            scriptGenerationModal.style.display = 'none';
+        });
+        cancelGenerate.addEventListener('click', () => {
+            scriptGenerationModal.style.display = 'none';
+        });
+        confirmGenerate.addEventListener('click', generateScript);
+
+        // Close modal when clicking outside
+        scriptGenerationModal.addEventListener('click', (e) => {
+            if (e.target === scriptGenerationModal) {
+                scriptGenerationModal.style.display = 'none';
+            }
+        });
+
+        async function runScript() {
+            const script = scriptCode.value.trim();
+            const description = scriptDescription.value.trim() || 'Script execution';
+            const filename = scriptFile.value || null;
+
+            if (!script) {
+                showOutput('❌ Error', 'Please enter some Python code to execute.');
+                return;
+            }
+
+            showOutput('🔄 Running...', 'Executing your script...');
+            runScriptBtn.disabled = true;
+            runScriptBtn.textContent = '⏳ Running...';
+
+            try {
+                const response = await fetch('/tools/execute', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        tool_name: 'execute_script',
+                        arguments: {
+                            script: script,
+                            filename: filename,
+                            description: description,
+                            output_type: 'both'
+                        }
+                    })
+                });
+
+                const result = await response.json();
+                displayScriptResult(result);
+
+            } catch (error) {
+                showOutput('❌ Error', `Failed to execute script: ${error.message}`);
+            } finally {
+                runScriptBtn.disabled = false;
+                runScriptBtn.textContent = '▶️ Run';
+            }
+        }
+
+        async function generateScript() {
+            const request = scriptRequest.value.trim();
+            const filename = modalDataFile.value || null;
+            const outputType = scriptType.value;
+
+            if (!request) {
+                alert('Please describe what analysis you want to perform.');
+                return;
+            }
+
+            const currentApiKey = apiKeys[selectedModel];
+            if (!currentApiKey) {
+                alert(`Please enter your ${selectedModelSpan.textContent} API key first.`);
+                return;
+            }
+
+            scriptGenerationModal.style.display = 'none';
+            showOutput('✨ Generating...', 'AI is generating your Python script...');
+
+            const prompt = `Generate a Python script for data analysis based on this request: "${request}"
+
+${filename ? `The script should work with the uploaded file: ${filename}. Use 'df' to access the dataframe.` : 'The script should work without any specific data file.'}
+
+Requirements:
+- Output type: ${outputType}
+- Use pandas, numpy, matplotlib, seaborn as needed
+- Include descriptive print statements
+- Add comments explaining the analysis
+- If creating plots, use plt.show() at the end
+
+Return only the Python code, no explanations.`;
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: selectedModel,
+                        apiKey: currentApiKey,
+                        message: prompt
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.reply) {
+                    // Extract Python code from the response
+                    let generatedScript = data.reply;
+                    
+                    // Try to extract code blocks
+                    const codeBlockMatch = generatedScript.match(/```python\n([\s\S]*?)\n```/);
+                    if (codeBlockMatch) {
+                        generatedScript = codeBlockMatch[1];
+                    } else {
+                        // Try to extract other code blocks
+                        const genericCodeMatch = generatedScript.match(/```\n([\s\S]*?)\n```/);
+                        if (genericCodeMatch) {
+                            generatedScript = genericCodeMatch[1];
+                        }
+                    }
+                    
+                    // Set the generated script
+                    scriptCode.value = generatedScript;
+                    scriptDescription.value = request;
+                    if (filename) {
+                        scriptFile.value = filename;
+                    }
+                    
+                    showOutput('✨ Generated!', 'Script has been generated. Click "Run" to execute it.');
+                } else {
+                    showOutput('❌ Error', 'Failed to generate script. Please try again.');
+                }
+            } catch (error) {
+                showOutput('❌ Error', `Failed to generate script: ${error.message}`);
+            }
+
+            // Clear modal inputs
+            scriptRequest.value = '';
+            modalDataFile.value = '';
+            scriptType.value = 'both';
+        }
+
+        function displayScriptResult(result) {
+            if (result.success) {
+                let output = `✅ **Execution Successful**\n\n`;
+                
+                if (result.description) {
+                    output += `**Description:** ${result.description}\n\n`;
+                }
+                
+                if (result.printed_output) {
+                    output += `**Output:**\n\`\`\`\n${result.printed_output}\n\`\`\`\n\n`;
+                }
+                
+                if (result.variables_created && result.variables_created.length > 0) {
+                    output += `**Variables created:** ${result.variables_created.join(', ')}\n\n`;
+                }
+                
+                showOutput('📊 Results', output);
+                
+                // Display plot if available
+                if (result.has_plot && result.plot_base64) {
+                    const plotContainer = document.createElement('div');
+                    plotContainer.className = 'plot-container';
+                    plotContainer.innerHTML = `
+                        <h4>📈 Generated Plot</h4>
+                        <img src="data:image/png;base64,${result.plot_base64}" alt="Generated plot" style="max-width: 100%; border-radius: 8px; margin-top: 10px;">
+                    `;
+                    scriptOutput.appendChild(plotContainer);
+                }
+                
+            } else {
+                let errorOutput = `❌ **Execution Failed**\n\n`;
+                errorOutput += `**Error:** ${result.error}\n\n`;
+                
+                if (result.error_type) {
+                    errorOutput += `**Error Type:** ${result.error_type}\n\n`;
+                }
+                
+                if (result.traceback) {
+                    errorOutput += `**Traceback:**\n\`\`\`\n${result.traceback}\n\`\`\``;
+                }
+                
+                showOutput('❌ Error', errorOutput);
+            }
+        }
+
+        function showOutput(title, content) {
+            scriptOutput.innerHTML = `
+                <div class="output-header">
+                    <h4>${title}</h4>
+                    <span class="output-time">${new Date().toLocaleTimeString()}</span>
+                </div>
+                <div class="output-body">${marked.parse(content)}</div>
+            `;
+            
+            // Highlight code blocks
+            scriptOutput.querySelectorAll('pre code').forEach((block) => {
+                hljs.highlightElement(block);
+            });
+        }
+
+        function clearOutput() {
+            scriptOutput.innerHTML = `
+                <div class="output-placeholder">
+                    <div class="placeholder-icon">📊</div>
+                    <p>Script output will appear here</p>
+                    <p class="placeholder-hint">Run a script to see results, plots, and analysis</p>
+                </div>
+            `;
+        }
+
+        function exportResult() {
+            const outputContent = scriptOutput.innerHTML;
+            if (outputContent.includes('output-placeholder')) {
+                alert('No results to export. Run a script first.');
+                return;
+            }
+            
+            const blob = new Blob([outputContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `script-results-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.html`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Auto-resize script editor
+        scriptCode.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 400) + 'px';
+        });
+
         // Initialize
         window.addEventListener('load', () => {
             updateApiKeyInput();
-            messageInput.focus();
+            if (currentTab === 'chat') {
+                messageInput.focus();
+            }
         });
     </script>
 </body>

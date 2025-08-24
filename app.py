@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
 import os
 import json
+import time
 
 # AI APIs
 import openai
@@ -11,7 +12,7 @@ import google.generativeai as genai
 # File parsing logic
 from data_parse.main_parser import parse_file
 
-# Context Manager
+# Enhanced Context Manager
 from context.manager import ContextManager
 
 # Data Access Tools
@@ -91,12 +92,16 @@ def upload_file():
 
 @app.route("/chat", methods=["POST"])
 def chat_with_model():
-    """Enhanced chat endpoint with tool calling support"""
+    """Enhanced chat endpoint with conversation history and tool calling"""
+    start_time = time.time()
+    
     try:
         data = request.json
         model = data.get("model")
         api_key = data.get("apiKey")
         user_input = data.get("message")
+        include_history = data.get("include_history", True)  # New parameter
+        history_turns = data.get("history_turns", 5)  # How many turns to include
 
         if not model or not api_key or not user_input:
             return jsonify({"reply": "Missing required parameters."}), 400
@@ -105,11 +110,14 @@ def chat_with_model():
         context_data = cm.get_all()
         enhanced_message = user_input
         
+        # Build file context
+        files_context = []
         if context_data:
             context_str = "Available file context (metadata only - use tools to access actual data):\n"
             for content in context_data:
                 if content["type"] == "file-content":
                     data_info = content["data"]
+                    files_context.append(data_info["filename"])
                     context_str += f"- File: {data_info['filename']} ({data_info['population']} rows)\n"
                     
                     # Handle different feature structures
@@ -129,12 +137,22 @@ def chat_with_model():
             context_str += "- get_column_data: Get specific columns\n" 
             context_str += "- get_statistics: Get descriptive statistics\n"
             context_str += "- search_data: Search for specific values\n"
-            context_str += "- query_sqlite: Run SQL queries on database files\n"
+            context_str += "- query_sqlite: Run SQL queries on database files\n\n"
             
-            enhanced_message = f"{context_str}\nUser question: {user_input}"
+            enhanced_message = context_str + enhanced_message
+
+        # Add conversation history if requested
+        if include_history:
+            conversation_context = cm.get_conversation_context_for_llm(
+                turns_to_include=history_turns,
+                include_tool_calls=True
+            )
+            if conversation_context:
+                enhanced_message = conversation_context + "\n" + enhanced_message
 
         # Get tool definitions
         tools_definition = data_tools.get_tools_definition()
+        tool_calls_made = []
 
         # Route to appropriate model with tool support
         if model == "openai":
@@ -163,8 +181,13 @@ def chat_with_model():
                         tool_name = tool_call.function.name
                         tool_args = json.loads(tool_call.function.arguments)
                         
-                        # Execute tool
+                        # Execute tool and track calls
                         result = data_tools.execute_tool(tool_name, tool_args)
+                        tool_calls_made.append({
+                            "tool": tool_name,
+                            "arguments": tool_args,
+                            "result": result
+                        })
                         
                         # Add tool call result message
                         tool_call_messages.append({
@@ -228,8 +251,13 @@ def chat_with_model():
                             tool_name = content_block.name
                             tool_args = content_block.input
                             
-                            # Execute tool
+                            # Execute tool and track calls
                             result = data_tools.execute_tool(tool_name, tool_args)
+                            tool_calls_made.append({
+                                "tool": tool_name,
+                                "arguments": tool_args,
+                                "result": result
+                            })
                             
                             # Add tool result message
                             tool_call_messages.append({
@@ -273,8 +301,6 @@ def chat_with_model():
             try:
                 genai.configure(api_key=api_key)
                 
-                # For Gemini, we'll implement a simpler approach without native tool calling
-                # since Gemini's tool calling API is different
                 model_client = genai.GenerativeModel("gemini-1.5-flash")
                 
                 # Add tool instructions to the prompt
@@ -306,10 +332,128 @@ def chat_with_model():
         else:
             reply = "Invalid model selected. Please choose OpenAI, Claude, or Gemini."
 
-        return jsonify({"reply": reply})
+        # Calculate response time
+        response_time = time.time() - start_time
+        
+        # Store conversation turn in context manager
+        conversation_id = cm.add_conversation_turn(
+            user_message=user_input,
+            assistant_response=reply,
+            model_used=model,
+            files_context=files_context,
+            tool_calls=tool_calls_made,
+            metadata={
+                "response_time_seconds": response_time,
+                "message_length": len(enhanced_message),
+                "tools_available": len(tools_definition),
+                "include_history": include_history,
+                "history_turns_included": history_turns if include_history else 0
+            }
+        )
+
+        return jsonify({
+            "reply": reply,
+            "conversation_id": conversation_id,
+            "response_time": f"{response_time:.2f}s",
+            "tools_used": len(tool_calls_made)
+        })
 
     except Exception as e:
         return jsonify({"reply": f"Server Error: {str(e)}"}), 500
+
+# New conversation management endpoints
+@app.route("/conversation/history", methods=["GET"])
+def get_conversation_history():
+    """Get conversation history with optional filtering"""
+    try:
+        limit = request.args.get("limit", type=int)
+        session_id = request.args.get("session_id")
+        include_context = request.args.get("include_context", "true").lower() == "true"
+        
+        history = cm.get_conversation_history(
+            limit=limit,
+            session_id=session_id,
+            include_context=include_context
+        )
+        
+        return jsonify({
+            "history": history,
+            "total_conversations": len(history),
+            "current_session": cm.session_id
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/conversation/search", methods=["POST"])
+def search_conversations():
+    """Search through conversation history"""
+    try:
+        data = request.json
+        query = data.get("query", "")
+        search_in = data.get("search_in", "both")  # "user", "assistant", "both"
+        case_sensitive = data.get("case_sensitive", False)
+        
+        if not query:
+            return jsonify({"error": "Query parameter is required"}), 400
+        
+        results = cm.search_conversations(
+            query=query,
+            search_in=search_in,
+            case_sensitive=case_sensitive
+        )
+        
+        return jsonify({
+            "results": results,
+            "total_matches": len(results),
+            "query": query,
+            "search_in": search_in
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/conversation/summary", methods=["GET"])
+def get_conversation_summary():
+    """Get conversation summary and statistics"""
+    try:
+        summary = cm.get_conversation_summary()
+        return jsonify(summary)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/conversation/export", methods=["GET"])
+def export_conversation():
+    """Export conversation history"""
+    try:
+        format_type = request.args.get("format", "json")  # "json" or "markdown"
+        
+        if format_type not in ["json", "markdown"]:
+            return jsonify({"error": "Format must be 'json' or 'markdown'"}), 400
+        
+        exported_data = cm.export_conversation_history(format=format_type)
+        
+        # Set appropriate content type and filename
+        if format_type == "json":
+            response = app.response_class(
+                response=exported_data,
+                status=200,
+                mimetype='application/json',
+                headers={
+                    'Content-Disposition': f'attachment; filename=conversation_history_{cm.session_id}.json'
+                }
+            )
+        else:  # markdown
+            response = app.response_class(
+                response=exported_data,
+                status=200,
+                mimetype='text/markdown',
+                headers={
+                    'Content-Disposition': f'attachment; filename=conversation_history_{cm.session_id}.md'
+                }
+            )
+        
+        return response
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/tools/execute", methods=["POST"])
 def execute_data_tool():
@@ -349,18 +493,42 @@ def list_available_tools():
 
 @app.route("/context", methods=["GET"])
 def get_context():
-    """Get all stored context data (metadata only)"""
+    """Get all stored context data (metadata only) and conversation summary"""
     try:
-        return jsonify(cm.get_all())
+        context_data = cm.get_all()
+        conversation_summary = cm.get_conversation_summary()
+        
+        return jsonify({
+            "file_context": context_data,
+            "conversation_summary": conversation_summary,
+            "session_id": cm.session_id
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route("/context/clear", methods=["POST"])
 def clear_context():
-    """Clear all stored context data"""
+    """Clear context data with options"""
     try:
-        cm.clear()
-        return jsonify({"message": "Context cleared successfully"})
+        data = request.json or {}
+        clear_type = data.get("type", "all")  # "all", "files", "conversation"
+        
+        if clear_type == "all":
+            cm.clear()
+            message = "All context and conversation history cleared successfully"
+        elif clear_type == "files":
+            cm.clear_by_type("file-content")
+            message = "File context cleared successfully"
+        elif clear_type == "conversation":
+            cm.clear_conversation_only()
+            message = "Conversation history cleared successfully"
+        else:
+            return jsonify({"error": "Invalid clear type. Use 'all', 'files', or 'conversation'"}), 400
+        
+        return jsonify({
+            "message": message,
+            "new_session_id": cm.session_id
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -401,6 +569,46 @@ def delete_file(filename):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Session management endpoints
+@app.route("/session/info", methods=["GET"])
+def get_session_info():
+    """Get current session information"""
+    try:
+        return jsonify({
+            "session_id": cm.session_id,
+            "session_start": cm.session_start_time.isoformat(),
+            "conversation_count": len(cm.conversation_history),
+            "files_loaded": len(cm.get_files()),
+            "summary": cm.get_conversation_summary()
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/session/new", methods=["POST"])
+def start_new_session():
+    """Start a new session (clears conversation but keeps files)"""
+    try:
+        data = request.json or {}
+        keep_files = data.get("keep_files", True)
+        
+        old_session_id = cm.session_id
+        
+        if keep_files:
+            cm.clear_conversation_only()
+            message = f"New session started. Files retained from previous session."
+        else:
+            cm.clear()
+            message = f"New session started. All data cleared."
+        
+        return jsonify({
+            "message": message,
+            "old_session_id": old_session_id,
+            "new_session_id": cm.session_id,
+            "files_retained": keep_files
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # Error handlers
 @app.errorhandler(413)
 def too_large(e):
@@ -416,4 +624,5 @@ def server_error(e):
 
 # Run server
 if __name__ == "__main__":
+    print(f"ConCore starting with session: {cm.session_id}")
     app.run(debug=True, host='0.0.0.0', port=8000)
